@@ -1,4 +1,4 @@
-# Test 2023-10-06 at 04:02:41
+# Test 2023-10-06 at 04:07:21
 
 name: Test
 
@@ -25,9 +25,9 @@ jobs:
     - name: Ubuntu update
       run:  sudo apt update
 
-    - name: Verilog
+    - name: Verilog installation
       run:  sudo apt -y install iverilog
 
-    - name: Verilog Version
+    - name: Test
       run:
         rm -f Zesal; iverilog -Iincludes/ -g2012 -o Zesal Zesal.sv Zesal.tb && timeout 1m ./Zesal
