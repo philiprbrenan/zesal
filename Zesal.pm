@@ -11,6 +11,10 @@ use Carp;
 use Data::Dump qw(dump);
 use Data::Table::Text qw(:all);
 
+my $debug = 0;
+
+sub reasonableDepth {9}                                                         # A reasonable maximum depth for a tree
+
 sub new(%)                                                                      # Create a new B Tree
  {my (%options) = @_;                                                           # Options
   my $n = genHash(__PACKAGE__,
@@ -44,9 +48,9 @@ sub insert($$$%)                                                                
    {return $R->insert($k, $d);
    }
 
-   if ($R->used == $z->keys)                                                  # Split root because no room left in root
+   if ($R->used == $z->keys)                                                    # Split root because no room left in root
     {my $l = $z->block;  my $r = $z->block;                                     # New left and right children
-     while($R->index->@* > 1)                                                # Load left and right children
+     while($R->index->@* > 1)                                                   # Load left and right children
       {my $li = shift $R->index->@*;
        $l->insert($R->keys->[$li], $R->data->[$li]);
        my $ri = pop $R->index->@*;
@@ -60,7 +64,7 @@ sub insert($$$%)                                                                
     }
 
   my $b = $z->root;                                                             # Root exists and has been split
-  descend: for(my $i = 0;$i < 10 && defined($b); ++$i)                          # Step down through tree splitting full nodes to facilitate insertion
+  descend: for(my $i = 0; $i < reasonableDepth() && defined($b); ++$i)          # Step down through tree splitting full nodes to facilitate insertion
    {my $u = $b->used;
     my $l;                                                                      # First key in the block that is greater than the supplied key
     for(my $i = 0; $i < $u; ++$i)                                               # Search for key.  Inefficient in code because it is sequential, but in hardware this will be done in parallel
@@ -70,10 +74,9 @@ sub insert($$$%)                                                                
         return 1;                                                               # Successful insert by updating data associated  with key
        }
       if ($b->keys->[$x] > $k)                                                  # First existing key that is greater than the supplied key
-       {$l = $i;
-        my $B = $b->next->[$x];                                                 # Child node to descend to
+       {my $B = $b->next ? $b->next->[$x] : undef;                              # Child node to descend to
         if (defined $B)                                                         # Not a leaf
-         {if ($B->used == $z->keys)                                             # Split non leaf and delay descent
+         {if ($B->used == $z->keys)                                             # Split child if full and delay descent
            {my $l = $z->block; my $r = $z->block;                               # New left and right children
             while($B->index->@* > 1)                                            # Load left and right children
              {my $L = shift $B->index->@*;
@@ -89,12 +92,30 @@ sub insert($$$%)                                                                
            {$b = $B;
            }
          }
+        else                                                                    # On a leaf and the key is not present on the leaf
+         {$b->insert($k, $d);
+          return;
+         }
         next descend;                                                           # Either delaying descent after split or descending because no split required
        }
      }
     my $B = $b->next ? $b->next->[$b->index->[$u]] : undef;                     # Child node to descend to because given key is bigger than all existing keys
     if (defined $B)                                                             # Not a leaf so we can descend
-     {$b = $B;
+     {if ($B->used == $z->keys)                                                 # Split child at end if full and delay descent
+       {my $l = $z->block; my $r = $z->block;                                   # New left and right children
+        while($B->index->@* > 1)                                                # Load left and right children
+          {my $L = shift $B->index->@*;
+           $l->insert($B->keys->[$L], $B->data->[$L], next=>$B->next->[$L]);
+            my $R = pop $B->index->@*;
+            $r->insert($B->keys->[$R], $B->data->[$R], next=>$B->next->[$R]);
+           }
+          my $i = $B->index->[0];                                               # Remaining key is the one to split on
+          $b->insert($B->keys->[$i], $B->data->[$i], next=>$l);                 # New left
+          $b->next->[$b->index->[$b->used]] = $r;                               # New right
+         }
+        else                                                                    # Descend immediately as no split was required
+         {$b = $B;
+         }
       next descend;                                                             # Descended off end of block
      }
     else
@@ -142,8 +163,54 @@ sub Zesal::Block::insert($$$%)                                                  
   $b
  }
 
+sub printFlat($%)                                                               # Print a tree horizontally
+ {my ($z, %options) = @_;                                                       #
+  my @k;                                                                        # Keys: [key, depth]
+  my $print; $print = sub                                                       # Print a block
+   {my ($b, $d) = @_;                                                           # Block, depth
+
+    if ($b->next)                                                               # Not a leaf
+     {for(my $i = 0; $i < $b->used; ++$i)                                       # Locate elements in ascending order noting the depth of each one
+       {my $x = $b->index->[$i];
+        $print->($b->next->[$x], $d+1);
+        push @k, [$b->keys->[$x], $d];
+       }
+      $print->($b->next->[$b->used], $d+1);
+     }
+    else                                                                        # Leaf
+     {for(my $i = 0; $i < $b->used; ++$i)                                       # Locate elements in ascending order noting the depth of each one
+       {my $x = $b->index->[$i];
+        push @k, [$b->keys->[$x], $d];
+       }
+     }
+   };
+  return "" unless my $r = $z->root;                                            # Empty tree
+
+  $print->($r, 1);                                                              # Order keys with their depths
+
+  my $L = max(map{length($$_[0])} @k);                                          # Maximum width of a key
+  my $D = max(map{       $$_[1] } @k);                                          # Maximum depth of a key
+
+  my @p;                                                                        # Layout tree horizontally
+  for my $depth(1..$D)                                                          # Each line of output with lowest levels first to put the root at the top
+   {my @l;
+    for my $i(keys @k)                                                          # Each key at this level
+     {my ($k, $d) = $k[$i]->@*;
+      if ($d == $depth)                                                         # Keys at this depth
+       {push @l, sprintf "%${L}d", $k;
+       }
+      else
+       {push @l, " " x $L;
+       }
+     }
+    push @p, join(' ', @l) =~ s(\s+\Z) ()r;
+   }
+  join "\n", @p, '';
+ }
+
 unless(caller)                                                                  # Tests
  {eval "use Test::More qw(no_plan);";
+  eval "Test::More->builder->output('/dev/null');";
 
   my $z = new();
   $z->insert(1, 101);
@@ -151,16 +218,46 @@ unless(caller)                                                                  
   $z->insert(2, 202);
   is_deeply($z->root->index, [0, 2, 1]);
 
-  $z->insert(8, 606);
+  $z->insert(8, 808);
   is_deeply($z->root->keys, [2]);
   is_deeply($z->root->next->[0]->keys, [1]);
   is_deeply($z->root->next->[1]->keys, [3,8]);
 
-say STDERR "AAAA", dump($z);
-  $z->insert(4, 404);
+  $z->insert(5, 505);
   is_deeply($z->root->keys, [2]);
   is_deeply($z->root->next->[0]->keys, [1]);
-  is_deeply($z->root->next->[1]->keys, [3,4]);
+  is_deeply($z->root->next->[1]->keys,  [3,8,5]);
+  is_deeply($z->root->next->[1]->index, [0, 2, 1]);
 
-  say STDERR "AAAA", dump($z);
+  $z->insert(4, 404);
+  is_deeply($z->root->keys, [2,5]);
+  is_deeply($z->root->next->[0]->keys, [1]);
+  is_deeply($z->root->next->[1]->keys, [3,4]);
+  is_deeply($z->root->next->[2]->keys, [8]);
+
+  is_deeply($z->printFlat, <<END);
+  2     5
+1   3 4   8
+END
+
+  $z->insert(6, 606);
+  is_deeply($z->printFlat, <<END);
+  2     5
+1   3 4   6 8
+END
+
+  $z->insert(7, 707);
+  is_deeply($z->printFlat, <<END);
+  2     5
+1   3 4   6 7 8
+END
+
+  $z->insert(9, 909);
+  is_deeply($z->printFlat, <<END);
+  2     5
+1   3 4   6 7 8
+END
+
+  say STDERR $z->printFlat;
+
  }
