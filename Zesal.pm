@@ -204,11 +204,39 @@ sub find($$%)                                                                   
      {$p = $n;
       next find;
      }
-    else                                                                    # Leaf so we cannot find the ley
+    else                                                                        # Leaf so we cannot find the ley
      {return undef;
      }
    };
   confess "Find looping";
+ }
+
+#D1 Iterate                                                                     # Traverse the tree
+
+sub iterate($%)                                                                 # All [key, data] pairs as an array in ascending key order
+ {my ($z, %options) = @_;                                                       # Object, options
+
+  my @z;                                                                        # Keys: [key, depth]
+
+  my sub p($)                                                                   # Unpack a block
+   {my ($b) = @_;                                                               # Block, depth
+    if ($b->next)                                                               # Not a leaf
+     {for(my $i = 0; $i < $b->used; ++$i)                                       # Locate elements in ascending order noting the depth of each one
+       {my $x = $b->index->[$i];
+        __SUB__->($b->next->[$x]);
+        push @z, [$b->keys->[$x], $b->data->[$x]];
+       }
+      __SUB__->($b->last);
+     }
+    else                                                                        # Leaf
+     {for(my $i = 0; $i < $b->used; ++$i)                                       # Locate elements in ascending order noting the depth of each one
+       {my $x = $b->index->[$i];
+        push @z, [$b->keys->[$x], $b->data->[$x],];
+       }
+     }
+   }
+  p($z->root);
+  @z
  }
 
 #D1 Print                                                                       # Print a B Tree and its components
@@ -268,16 +296,16 @@ sub printTree($%)                                                               
 sub printFlat($%)                                                               # Print a tree horizontally
  {my ($z, %options) = @_;                                                       #
   my @k;                                                                        # Keys: [key, depth]
-  my $print; $print = sub                                                       # Print a block
-   {my ($b, $d) = @_;                                                           # Block, depth
 
+  my sub p($$)                                                                  # Print a block
+   {my ($b, $d) = @_;                                                           # Block, depth
     if ($b->next)                                                               # Not a leaf
      {for(my $i = 0; $i < $b->used; ++$i)                                       # Locate elements in ascending order noting the depth of each one
        {my $x = $b->index->[$i];
-        $print->($b->next->[$x], $d+1);
+        __SUB__->($b->next->[$x], $d+1);
         push @k, [$b->keys->[$x], $d];
        }
-      $print->($b->last, $d+1);
+      __SUB__->($b->last, $d+1);
      }
     else                                                                        # Leaf
      {for(my $i = 0; $i < $b->used; ++$i)                                       # Locate elements in ascending order noting the depth of each one
@@ -286,9 +314,10 @@ sub printFlat($%)                                                               
        }
      }
    };
+
   return "" unless my $r = $z->root;                                            # Empty tree
 
-  $print->($r, 1);                                                              # Order keys with their depths
+  p($r, 1);                                                                     # Order keys with their depths
 
   my $L = max(map{length($$_[0])} @k);                                          # Maximum width of a key
   my $D = max(map{       $$_[1] } @k);                                          # Maximum depth of a key
@@ -316,88 +345,89 @@ eval {return 1} unless caller;
 eval "use Test::More qw(no_plan);";
 eval "Test::More->builder->output('/dev/null');" if -e q(/home/phil/);
 
-my $z = new();
-$z->insert(1, 101);
-$z->insert(3, 303);
-$z->insert(2, 202);
-is_deeply($z->root->index, [0, 2, 1]);
+if (1)
+ {my $z = new();
+  $z->insert(1, 101);
+  $z->insert(3, 303);
+  $z->insert(2, 202);
+  is_deeply($z->root->index, [0, 2, 1]);
 
-$z->insert(8, 808);
-is_deeply($z->root->keys, [2]);
-is_deeply($z->root->next->[0]->keys, [1]);
-is_deeply($z->root->last->keys,      [3,8]);
+  $z->insert(8, 808);
+  is_deeply($z->root->keys, [2]);
+  is_deeply($z->root->next->[0]->keys, [1]);
+  is_deeply($z->root->last->keys,      [3,8]);
 
-$z->insert(5, 505);
-is_deeply($z->root->keys, [2]);
-is_deeply($z->root->next->[0]->keys, [1]);
-is_deeply($z->root->last->keys,  [3,8,5]);
-is_deeply($z->root->last->index, [0, 2, 1]);
+  $z->insert(5, 505);
+  is_deeply($z->root->keys, [2]);
+  is_deeply($z->root->next->[0]->keys, [1]);
+  is_deeply($z->root->last->keys,  [3,8,5]);
+  is_deeply($z->root->last->index, [0, 2, 1]);
 
-$z->insert(4, 404);
-is_deeply($z->root->keys, [2,5]);
-is_deeply($z->root->next->[0]->keys, [1]);
-is_deeply($z->root->next->[1]->keys, [3,4]);
-is_deeply($z->root->last->keys,      [8]);
+  $z->insert(4, 404);
+  is_deeply($z->root->keys, [2,5]);
+  is_deeply($z->root->next->[0]->keys, [1]);
+  is_deeply($z->root->next->[1]->keys, [3,4]);
+  is_deeply($z->root->last->keys,      [8]);
 
-is_deeply($z->printFlat, <<END);
+  is_deeply($z->printFlat, <<END);
   2     5
 1   3 4   8
 END
 
-$z->insert(6, 606);
-is_deeply($z->printFlat, <<END);
+  $z->insert(6, 606);
+  is_deeply($z->printFlat, <<END);
   2     5
 1   3 4   6 8
 END
 
-$z->insert(7, 707);
-is_deeply($z->printFlat, <<END);
+  $z->insert(7, 707);
+  is_deeply($z->printFlat, <<END);
   2     5
 1   3 4   6 7 8
 END
 
-$z->insert(9, 909);
-is_deeply($z->printFlat, <<END);
+  $z->insert(9, 909);
+  is_deeply($z->printFlat, <<END);
   2     5   7
 1   3 4   6   8 9
 END
 
-$z->insert(10, 10010);
-is_deeply($z->printFlat, <<END);
+  $z->insert(10, 10010);
+  is_deeply($z->printFlat, <<END);
              5
     2              7
  1     3  4     6     8  9 10
 END
 
-$z->insert(20, 20020);
-is_deeply($z->printFlat, <<END);
+  $z->insert(20, 20020);
+  is_deeply($z->printFlat, <<END);
              5
     2              7     9
  1     3  4     6     8    10 20
 END
 
-$z->insert($_, $_."0".$_) for 21..23;
-is_deeply($z->printFlat, <<END);
+  $z->insert($_, $_."0".$_) for 21..23;
+  is_deeply($z->printFlat, <<END);
              5           9
     2              7          20
  1     3  4     6     8    10    21 22 23
 END
 
-$z->insert($_, $_."0".$_) for 11..13;
-is_deeply($z->printFlat, <<END);
+  $z->insert($_, $_."0".$_) for 11..13;
+  is_deeply($z->printFlat, <<END);
              5           9
     2              7          11       20
  1     3  4     6     8    10    12 13    21 22 23
 END
 
-$z->insert($_, $_."0".$_) for reverse 14..19;
-is_deeply($z->printFlat, <<END);
+  $z->insert($_, $_."0".$_) for reverse 14..19;
+  is_deeply($z->printFlat, <<END);
                          9
              5                      13
     2              7          11             16    18    20
  1     3  4     6     8    10    12    14 15    17    19    21 22 23
 END
-
+ }
 
 if (0)                                                                          # Randomize an array
  {my @r = 1..100;
@@ -426,6 +456,8 @@ END
 
   is_deeply($z->find($_), $_) for @r;
   ok(!$z->find($_)) for 0, 1+@r;
+
+  is_deeply([$z->iterate], [map{[$_, $_]} 1..100]);
  }
 
 if (1)                                                                          # Reverse load
