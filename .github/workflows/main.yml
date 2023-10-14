@@ -1,4 +1,4 @@
-# Test 2023-10-14 at 05:22:22
+# Test 2023-10-14 at 05:36:29
 
 name: Test
 
@@ -21,7 +21,7 @@ jobs:
         path: dtt
 
     - name: Cpan
-      run:  sudo cpan install -T Data::Dump
+      run:  sudo cpan install -T Data::Dump Data::Table::Text
     - name: Ubuntu update
       run:  sudo apt update
 
