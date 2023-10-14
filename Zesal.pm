@@ -16,7 +16,7 @@ my $debug;
 
 sub reasonableDepth {9}                                                         # A reasonable maximum depth for a tree
 
-sub new(%)                                                                      # Create a new B Tree
+my sub new(%)                                                                   # Create a new B Tree
  {my (%options) = @_;                                                           # Options
   my $n = genHash(__PACKAGE__,
     keys => $options{keys}//3,                                                  # Maximum number of keys a in block in this tree
@@ -40,6 +40,8 @@ sub block($%)                                                                   
     id    => $i,                                                                # Block number to help us identify it in dumps
    );
  }
+
+#D1 Insert                                                                      # Constrict a tree by inserting keys and data
 
 sub splitNode($$)                                                               # Split a child node into two nodes and insert them into the parent block assuming that there will be enough space available.
  {my ($z, $B) = @_;                                                             # Tree, parent, child
@@ -167,7 +169,6 @@ sub Zesal::Block::insert($$$%)                                                  
     $b->next->[$n] = $options{next} if $options{next};                          # Insert next link
     $b->used++;
    }
-
   else                                                                          # Extend block
    {$b->keys->[$u] = $k;                                                        # Insert key
     $b->data->[$u] = $d;                                                        # Insert data
@@ -176,6 +177,41 @@ sub Zesal::Block::insert($$$%)                                                  
    }
   $b
  }
+
+#D1 Find                                                                        # Find the data associated with a key in a B-Tree
+
+sub find($$%)                                                                   # Find the data associated with a key in a B-Tree
+ {my ($z, $k, %options) = @_;                                                   # Key to find, options
+  return undef unless my $p = $z->root;                                         # Root node or nothing
+
+  find: for(my $j = 0; $j < reasonableDepth() && defined($p); ++$j)             # Step down through tree
+   {my $u = $p->used;
+    for(my $i = 0; $i < $u; ++$i)                                               # Search for key.  Inefficient in code because it is sequential, but in hardware this will be done in parallel
+     {my $x = $p->index->[$i];                                                  # Indirection via index
+      my $K = $p->keys->[$x];                                                   # Key
+      return $p->data->[$x] if $K == $k;                                        # Numeric comparison because strings can be constructed from numbers and fixed width numbers are easier to handle in hardware than varying length strings
+      if ($K > $k)                                                              # First existing key that is greater than the supplied key
+       {if (my $n = $p->next)                                                   # Step down
+         {$p = $p->next->[$x];
+          next find;
+         }
+        else                                                                    # Leaf so we cannot find the ley
+         {return undef;
+         }
+       }
+     }
+    if (my $n = $p->last)                                                       # Bigger than any key in the block
+     {$p = $n;
+      next find;
+     }
+    else                                                                    # Leaf so we cannot find the ley
+     {return undef;
+     }
+   };
+  confess "Find looping";
+ }
+
+#D1 Print                                                                       # Print a B Tree and its components
 
 sub Zesal::Block::print($%)                                                     # Print a block
  {my ($b, %options) = @_;                                                       # Block, options
@@ -274,7 +310,9 @@ sub printFlat($%)                                                               
   join "\n", @p, '';
  }
 
-eval {return 1} unless caller;                                                  # Tests
+#D0 Tests                                                                       # Tests and examples
+
+eval {return 1} unless caller;
 eval "use Test::More qw(no_plan);";
 eval "Test::More->builder->output('/dev/null');" if -e q(/home/phil/);
 
@@ -385,6 +423,9 @@ if (1)                                                                          
               4                      10                  15                          22              26      28                      34      36              40              44          47                          54                              62              66                          73      75                      81          84                              92                      98
   1   2   3       5   6       8   9      11  12      14      16  17      19  20  21      23      25      27      29  30      32  33      35      37  38  39      41      43      45  46      48  49  50      52  53      55  56  57      59  60  61      63      65      67  68      70  71  72      74      76  77  78      80      82  83      85  86  87      89  90  91      93      95  96  97      99 100
 END
+
+  is_deeply($z->find($_), $_) for @r;
+  ok(!$z->find($_)) for 0, 1+@r;
  }
 
 if (1)                                                                          # Reverse load
