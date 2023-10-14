@@ -102,7 +102,7 @@ sub insert($$$%)                                                                
          {if ($B->used == $z->keys)                                             # Split child if full and delay descent
            {my ($l, $r, $b0) = $z->splitNode($B);                               # New left and right children
             $b->next->[$x] = $r;                                                # New right
-            $b->insert($B->keys->[$b0], $B->data->[$b0], next=>$l, at=>$x+1);             # New left
+            $b->insert($B->keys->[$b0], $B->data->[$b0], next=>$l);             # New left
            }
           else                                                                  # Descend immediately without splitting
            {$b = $B;
