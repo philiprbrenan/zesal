@@ -102,7 +102,7 @@ sub insert($$$%)                                                                
          {if ($B->used == $z->keys)                                             # Split child if full and delay descent
            {my ($l, $r, $b0) = $z->splitNode($B);                               # New left and right children
             $b->next->[$x] = $r;                                                # New right
-            $b->insert($B->keys->[$b0], $B->data->[$b0], next=>$l);             # New left
+            $b->insert($B->keys->[$b0], $B->data->[$b0], next=>$l, at=>$i);     # New left
            }
           else                                                                  # Descend immediately without splitting
            {$b = $B;
@@ -120,7 +120,7 @@ sub insert($$$%)                                                                
     if (defined $B)                                                             # Not a leaf so we can descend
      {if ($B->used == $z->keys)                                                 # Split child at end if full and delay descent
        {my ($l, $r, $i) = $z->splitNode($B);                                    # New left and right children
-        $b->insert($B->keys->[$i], $B->data->[$i], next=>$l);                   # New left
+        $b->insert($B->keys->[$i], $B->data->[$i], next=>$l, at=>$b->used);     # New left
         $b->last = $r;                                                          # New right is last child
        }
       else                                                                      # Descend immediately as no split was required
@@ -135,7 +135,7 @@ sub insert($$$%)                                                                
   $z->printTree(title=>"Loop in tree");
   confess;
  }
-
+# 2023-10-14 Added at=> option to located the new child in the parent.
 sub Zesal::Block::insert($$$%)                                                  # Insert a new data, key pair
  {my ($b, $k, $d, %options) = @_;                                               # Tree, key, data
 
