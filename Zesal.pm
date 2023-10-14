@@ -74,7 +74,7 @@ sub insert($$$%)                                                                
    if ($R->used == $z->keys)                                                    # Split root because no room left in root
     {my ($l, $r, $i) = $z->splitNode($R);                                       # New left and right children
      my $n = $z->block;                                                         # Move remaining key into position at start of new root
-     $n->insert($R->keys->[$i], $R->data->[$i], next=>$l);
+     $n->insert($R->keys->[$i], $R->data->[$i], next=>$l, at=>0);
      $n->last = $r;
      $z->root = $n;                                                             # Replace existing root with new root
     }
@@ -102,7 +102,7 @@ sub insert($$$%)                                                                
          {if ($B->used == $z->keys)                                             # Split child if full and delay descent
            {my ($l, $r, $b0) = $z->splitNode($B);                               # New left and right children
             $b->next->[$x] = $r;                                                # New right
-            $b->insert($B->keys->[$b0], $B->data->[$b0], next=>$l);             # New left
+            $b->insert($B->keys->[$b0], $B->data->[$b0], next=>$l, at=>$x+1);             # New left
            }
           else                                                                  # Descend immediately without splitting
            {$b = $B;
@@ -141,18 +141,21 @@ sub Zesal::Block::insert($$$%)                                                  
 
   my $z = $b->tree;
   my $u = $b->used;
-  my $l;                                                                        # First key in the block that is greater than the supplied key
-  for(my $i = 0; $i < $u; ++$i)                                                 # Search for key.  Inefficient in code because it is sequential, but in hardware this will be done in parallel
-   {my $x = $b->index->[$i];                                                    # Indirection via index
-    if ($b->keys->[$x] == $k)                                                   # Numeric comparison because strings can be constructed from numbers and fixed width numbers are easier to handle in hardware than varying length strings
-     {$b->data->[$x] = $d;                                                      # Insert data at existing key
-      return 1;                                                                 # Successful insert by updating data associated  with key
-     }
-    if ($b->keys->[$x] > $k)                                                    # First existing key that is greater than the supplied key
-     {$l = $i; last;
+  confess "No room in block" unless $u < $z->keys;                              # No room to extend this block
+
+  my $l = $options{at};                                                         # First key in the block that is greater than the supplied key
+  if (!defined($l))                                                             # Find the insertion location in the parent if it has not been supplied
+   {for(my $i = 0; $i < $u; ++$i)                                               # Search for key.  Inefficient in code because it is sequential, but in hardware this will be done in parallel
+     {my $x = $b->index->[$i];                                                  # Indirection via index
+      if ($b->keys->[$x] == $k)                                                 # Numeric comparison because strings can be constructed from numbers and fixed width numbers are easier to handle in hardware than varying length strings
+       {$b->data->[$x] = $d;                                                    # Insert data at existing key
+        return 1;                                                               # Successful insert by updating data associated  with key
+       }
+      if ($b->keys->[$x] > $k)                                                  # First existing key that is greater than the supplied key
+       {$l = $i; last;
+       }
      }
    }
-  confess "No room in block" unless $u < $z->keys;                              # No room to extend this block
 
   $z->size++;                                                                   # We can add the new key
 
