@@ -1,4 +1,4 @@
-# Test 2023-10-13 at 23:44:29
+# Test 2023-10-14 at 05:22:14
 
 name: Test
 
@@ -28,6 +28,10 @@ jobs:
     - name: Verilog installation
       run:  sudo apt -y install iverilog
 
-    - name: Test
+    - name: Test Perl
+      run:
+        perl Zesal.pm
+
+    - name: Test Verilog
       run:
         rm -f Zesal; iverilog -Iincludes/ -g2012 -o Zesal Zesal.sv Zesal.tb && timeout 1m ./Zesal
