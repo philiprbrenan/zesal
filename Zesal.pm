@@ -282,7 +282,7 @@ sub printFlat($%)                                                               
 
 eval {return 1} unless caller;                                                  # Tests
 eval "use Test::More qw(no_plan);";
-eval "Test::More->builder->output('/dev/null');";
+eval "Test::More->builder->output('/dev/null');" if -e q(/home/phil/);
 
 my $z = new();
 $z->insert(1, 101);
