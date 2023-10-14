@@ -41,6 +41,21 @@ sub block($%)                                                                   
    );
  }
 
+sub splitNode($$)                                                               # Split a child node into two nodes and insert them into the parent block assuming that there will be enough space available.
+ {my ($z, $B) = @_;                                                             # Tree, parent, child
+  my $l = $z->block; my $r = $z->block;                                         # New left and right children
+  while($B->index->@* > 1)                                                      # Load left and right children
+   {my $li = shift $B->index->@*;
+    my $ri = pop   $B->index->@*;
+    $l->insert($B->keys->[$li], $B->data->[$li], $B->next ? (next => $B->next->[$li]) : ());
+    $r->insert($B->keys->[$ri], $B->data->[$ri], $B->next ? (next => $B->next->[$ri]) : ());
+   }
+   my $i = $B->index->[0];                                                      # Remaining key is the one to split on
+   $l->last = $B->next->[$i]; $r->last = $B->last;
+
+  ($l, $r, $i)
+ }
+
 sub insert($$$%)                                                                # Insert a new data, key pair in a tree
  {my ($z, $k, $d, %options) = @_;                                               # Tree, key, data
 
@@ -57,16 +72,8 @@ sub insert($$$%)                                                                
    $R->used <= $z->keys or confess "Number used has got too big";               # Check that the number used is plausible
 
    if ($R->used == $z->keys)                                                    # Split root because no room left in root
-    {my $l = $z->block; my $r = $z->block;                                      # New left and right children
-     while($R->index->@* > 1)                                                   # Load left and right children
-      {my $li = shift $R->index->@*;
-       $l->insert($R->keys->[$li], $R->data->[$li], $R->next ? (next => $R->next->[$li]) : ());
-       my $ri = pop $R->index->@*;
-       $r->insert($R->keys->[$ri], $R->data->[$ri], $R->next ? (next => $R->next->[$ri]) : ());
-      }
+    {my ($l, $r, $i) = $z->splitNode($R);                                       # New left and right children
      my $n = $z->block;                                                         # Move remaining key into position at start of new root
-     my $i = $R->index->[0];
-     $l->last = $R->next->[$i]; $r->last = $R->last;
      $n->insert($R->keys->[$i], $R->data->[$i], next=>$l);
      $n->last = $r;
      $z->root = $n;                                                             # Replace existing root with new root
@@ -93,17 +100,9 @@ sub insert($$$%)                                                                
        {my $B = $b->next ? $b->next->[$x] : undef;                              # Child node to descend to
         if (defined $B)                                                         # Not a leaf
          {if ($B->used == $z->keys)                                             # Split child if full and delay descent
-           {my $l = $z->block; my $r = $z->block;                               # New left and right children
-            while($B->index->@* > 1)                                            # Load left and right children
-             {my $L = shift $B->index->@*;
-              $l->insert($B->keys->[$L], $B->data->[$L], next=>$B->next->[$L]);
-              my $R = pop $B->index->@*;
-              $r->insert($B->keys->[$R], $B->data->[$R], next=>$B->next->[$R]);
-             }
-            my $b0 = $B->index->[0];                                            # Remaining key is the one to split on
-            $l->last = $B->next->[$b0]; $r->last = $B->last;
+           {my ($l, $r, $b0) = $z->splitNode($B);                               # New left and right children
             $b->next->[$x] = $r;                                                # New right
-            $b->insert($B->keys->[$b0], $B->data->[$b0], next=>$l);               # New left
+            $b->insert($B->keys->[$b0], $B->data->[$b0], next=>$l);             # New left
            }
           else                                                                  # Descend immediately without splitting
            {$b = $B;
@@ -120,15 +119,7 @@ sub insert($$$%)                                                                
     my $B = $b->last;                                                           # Child node to descend to because given key is bigger than all existing keys
     if (defined $B)                                                             # Not a leaf so we can descend
      {if ($B->used == $z->keys)                                                 # Split child at end if full and delay descent
-       {my $l = $z->block; my $r = $z->block;                                   # New left and right children
-        while($B->index->@* > 1)                                                # Load left and right children
-         {my $L = shift $B->index->@*;
-          $l->insert($B->keys->[$L], $B->data->[$L], next=>$B->next->[$L]);
-          my $R = pop $B->index->@*;
-          $r->insert($B->keys->[$R], $B->data->[$R], next=>$B->next->[$R]);
-         }
-        my $i = $B->index->[0];                                                 # Remaining key is the one to split on
-        $l->last = $B->next->[$i]; $r->last = $B->last;
+       {my ($l, $r, $i) = $z->splitNode($B);                                    # New left and right children
         $b->insert($B->keys->[$i], $B->data->[$i], next=>$l);                   # New left
         $b->last = $r;                                                          # New right is last child
        }
@@ -161,7 +152,7 @@ sub Zesal::Block::insert($$$%)                                                  
      {$l = $i; last;
      }
    }
-  return 0 unless $u < $z->keys;                                                # No room to extend this block
+  confess "No room in block" unless $u < $z->keys;                              # No room to extend this block
 
   $z->size++;                                                                   # We can add the new key
 
