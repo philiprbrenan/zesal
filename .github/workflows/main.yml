@@ -1,4 +1,4 @@
-# Test 2023-10-14 at 07:59:42
+# Test 2023-10-15 at 00:50:35
 
 name: Test
 
@@ -28,9 +28,13 @@ jobs:
     - name: Verilog installation
       run:  sudo apt -y install iverilog
 
-    - name: Test Perl
+    - name: Test Perl implementation of B Tree
       run:
         perl Zesal.pm
+
+    - name: Test Perl integrated circuit designer
+      run:
+        perl Designer.pm
 
     - name: Test Verilog
       run:
