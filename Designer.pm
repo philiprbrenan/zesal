@@ -34,7 +34,7 @@ sub gate($$;$)                                                                  
     ref($inputs) =~ m(hash)i and confess "Scalar input name required for '$output'\n";
     $inputs = {$output=>$inputs};                                               # Convert convenient scalar name to hash for consistency with gates in general
    }
-  elsif ($type =~ m(\A(nxor|xor)\Z)i)                                           # These gates must have exactly two inputs expressed as a hash mapping input pin name to connection to a named gate.  These operations are associative.
+  elsif ($type =~ m(\A(nxor|xor|gt|ngt|lt|nlt)\Z)i)                             # These gates must have exactly two inputs expressed as a hash mapping input pin name to connection to a named gate.  These operations are associative.
    {!defined($inputs) and confess "Input hash required for gate '$output'\n";
     ref($inputs) =~ m(hash)i or confess "Inputs must be a hash of input names to outputs for '$output' to show the output accepted by each input. Input gates have no inputs, they are supplied instead during simulation\n";
     keys(%$inputs) == 2 or confess "Two inputs required for gate: '$output'\n";
@@ -124,6 +124,14 @@ sub simulate($%)                                                                
         elsif ($t =~ m(\A(nxor|xor)\Z)i)                                        # Elaborate XOR
          {$r = $i[0] ^ $i[1];
           $r = !$r if $t =~ m(\Anxor\Z)i;
+         }
+        elsif ($t =~ m(\A(gt|ngt)\Z)i)                                          # Elaborate GT
+         {$r = $i[0] > $i[1];
+          $r = !$r if $t =~ m(\Angt\Z)i;
+         }
+        elsif ($t =~ m(\A(lt|nlt)\Z)i)                                          # Elaborate LT
+         {$r = $i[0] < $i[1];
+          $r = !$r if $t =~ m(\Anlt\Z)i;
          }
         else                                                                    # Unknown gate type
          {confess "Need implementation for '$t' gates";
@@ -230,14 +238,34 @@ if (1)                                                                          
 
 #latest:;
 if (1)                                                                          # 4 bit comparator
- {start;
-  gate("input",  "a$_") for 1..4;                                               # First number
-  gate("input",  "b$_") for 1..4;                                               # Second number
-  gate("nxor",   "e$_", {1=>"a$_", 2=>"b$_"}) for 1..4;                         # Test each bit for equality
-  gate("and",    "and", {map{$_=>"e$_"} 1..4});                                 # And tests together to get equality
+ {my $B = 4;
+  start;
+  gate("input",  "a$_") for 1..$B;                                              # First number
+  gate("input",  "b$_") for 1..$B;                                              # Second number
+  gate("nxor",   "e$_", {1=>"a$_", 2=>"b$_"}) for 1..$B;                        # Test each bit for equality
+  gate("and",    "and", {map{$_=>"e$_"} 1..$B});                                # And tests together to get equality
   gate("output", "out", "and");
   is_deeply(simulate({a1=>1, a2=>0, a3=>1, a4=>0,
                       b1=>1, b2=>0, b3=>1, b4=>0})->values->{out}, 1);
   is_deeply(simulate({a1=>1, a2=>1, a3=>1, a4=>0,
                       b1=>1, b2=>0, b3=>1, b4=>0})->values->{out}, 0);
+ }
+
+latest:;
+if (1)                                                                          # 4 bit 'a' greater than 'b'
+ {my $B = 4;
+  start;
+  gate("input",  "a$_") for 1..$B;                                              # First number
+  gate("input",  "b$_") for 1..$B;                                              # Second number
+  gate("nxor",   "e$_", {1=>"a$_", 2=>"b$_"}) for 1..$B-1;                      # Test each bit for equality
+  gate("gt",     "g$_", {1=>"a$_", 2=>"b$_"}) for 1..$B;                        # Test each bit pair for greater
+  gate("and",    "A2",  {1=>"e1", 2=>                  "g2"});                  # Greater on bit 2 and all preceding bits are equal
+  gate("and",    "A3",  {1=>"e1", 2=>"e2", 3=>         "g3"});                  # Greater on bit 3 and all preceding bits are equal
+  gate("and",    "A4",  {1=>"e1", 2=>"e2", 3=>"e3", 4=>"g4"});                  # Greater on bit 4 and all preceding bits are equal
+  gate("or",     "or",  {1=>"g1", 2=>"A2", 3=>"A3", 4=>"A4"});                  # Any set bit indicates that 'a' is greater than 'b'
+  gate("output", "out", "or");
+  is_deeply(simulate({a1=>1, a2=>0, a3=>1, a4=>0,
+                      b1=>1, b2=>0, b3=>1, b4=>0})->values->{out}, 0);
+  is_deeply(simulate({a1=>1, a2=>1, a3=>1, a4=>0,
+                      b1=>1, b2=>0, b3=>1, b4=>0})->values->{out}, 1);
  }
