@@ -69,7 +69,7 @@ sub checkIO(%)                                                                  
     for my $i(sort keys %i)                                                     # Each input
      {my $o = $i{$i};                                                           # Output driving input
       if (!exists $gates{$o})                                                   # No driving output
-       {confess "No output driving input '$i' on gate '$G'\n";
+       {confess "No output driving input '$o' on gate '$G'\n";
        }
       $o{$o}++                                                                  # Show that this output has been used
      }
@@ -91,16 +91,16 @@ sub simulate($%)                                                                
 
   my $t; for($t = 0; $t < maxSimulationSteps; ++$t)                             # Steps in time
    {my %changes;                                                                # Changes made
-    for my $G(sort keys %gates)
+    for my $G(keys %gates)
      {my $g = $gates{$G};                                                       # Address gate
       my $t = $g->type;                                                         # Gate type
       next if $t =~ m(\Ainput\Z)i;                                              # No need to calculate value of input gates
       my %i = $g->inputs->%*;                                                   # Inputs to gate
-      my @i = @values{values %i};                                               # Values of inputs to gates
+      my @i = map {$values{$i{$_}}} sort keys %i;                               # Values of inputs to gates in input pin name order
 
       my $u = 0;                                                                # Number of undefined inputs
-      for my $i(sort keys %i)
-       {++$u unless defined $values{$i{$i}};
+      for my $i(@i)
+       {++$u unless defined $i;
        }
 
       if (!$u)                                                                  # All inputs defined
@@ -122,16 +122,19 @@ sub simulate($%)                                                                
           $r = !$r if $t =~ m(\Anor|not\Z)i;
          }
         elsif ($t =~ m(\A(nxor|xor)\Z)i)                                        # Elaborate XOR
-         {$r = $i[0] ^ $i[1];
-          $r = !$r if $t =~ m(\Anxor\Z)i;
+         {@i == 2 or confess;
+          $r = $i[0] ^ $i[1] ? 1 : 0;
+          $r = $r ? 0 : 1 if $t =~ m(\Anxor\Z)i;
          }
-        elsif ($t =~ m(\A(gt|ngt)\Z)i)                                          # Elaborate GT
-         {$r = $i[0] > $i[1];
-          $r = !$r if $t =~ m(\Angt\Z)i;
+        elsif ($t =~ m(\A(gt|ngt)\Z)i)                                          # Elaborate A GT B - the input pins are assumed to be sorted by name with the first pin as A and the second as B
+         {@i == 2 or confess;
+          $r = $i[0] > $i[1] ? 1 : 0;
+          $r = $r ? 0 : 1 if $t =~ m(\Angt\Z)i;
          }
-        elsif ($t =~ m(\A(lt|nlt)\Z)i)                                          # Elaborate LT
-         {$r = $i[0] < $i[1];
-          $r = !$r if $t =~ m(\Anlt\Z)i;
+        elsif ($t =~ m(\A(lt|nlt)\Z)i)                                          # Elaborate A LT B - the input pins are assumed to be sorted by name with the first pin as A and the second as B
+         {@i == 2 or confess;
+          $r = $i[0] < $i[1] ? 1 : 0;
+          $r = $r ? 0 : 1 if $t =~ m(\Anlt\Z)i;
          }
         else                                                                    # Unknown gate type
          {confess "Need implementation for '$t' gates";
@@ -141,7 +144,7 @@ sub simulate($%)                                                                
      }
 
     last unless keys %changes;                                                  # Keep going until nothing changes
-    for my $c(sort keys %changes)                                               # Update state of circuit
+    for my $c(keys %changes)                                                    # Update state of circuit
      {$values{$c} = $changes{$c};
      }
    }
@@ -173,6 +176,7 @@ if (1)                                                                          
   ok($@ =~ m(Gate i1 has already been specified));
  }
 
+#latest:;
 if (1)                                                                          # Check all inputs
  {start;
   gate("input",  "i1");
@@ -180,10 +184,10 @@ if (1)                                                                          
   gate("and",    "and1", {1=>q(i1), i2=>q(i2)});
   gate("output", "o",    q(an1));
   eval {simulate({i1=>1, i2=>1})};
-  ok($@ =~ m(No output driving input '1' on gate 'o')i);
+  ok($@ =~ m(No output driving input 'an1' on gate 'o')i);
  }
 
-latest:;
+#latest:;
 if (1)                                                                          # Single AND gate
  {start;
   gate("input",  "i1");
@@ -251,7 +255,7 @@ if (1)                                                                          
                       b1=>1, b2=>0, b3=>1, b4=>0})->values->{out}, 0);
  }
 
-latest:;
+#latest:;
 if (1)                                                                          # 4 bit 'a' greater than 'b'
  {my $B = 4;
   start;
@@ -259,13 +263,18 @@ if (1)                                                                          
   gate("input",  "b$_") for 1..$B;                                              # Second number
   gate("nxor",   "e$_", {1=>"a$_", 2=>"b$_"}) for 1..$B-1;                      # Test each bit for equality
   gate("gt",     "g$_", {1=>"a$_", 2=>"b$_"}) for 1..$B;                        # Test each bit pair for greater
-  gate("and",    "A2",  {1=>"e1", 2=>                  "g2"});                  # Greater on bit 2 and all preceding bits are equal
-  gate("and",    "A3",  {1=>"e1", 2=>"e2", 3=>         "g3"});                  # Greater on bit 3 and all preceding bits are equal
-  gate("and",    "A4",  {1=>"e1", 2=>"e2", 3=>"e3", 4=>"g4"});                  # Greater on bit 4 and all preceding bits are equal
-  gate("or",     "or",  {1=>"g1", 2=>"A2", 3=>"A3", 4=>"A4"});                  # Any set bit indicates that 'a' is greater than 'b'
+  gate("and",    "c2",  {1=>"e1", 2=>                  "g2"});                  # Greater on bit 2 and all preceding bits are equal
+  gate("and",    "c3",  {1=>"e1", 2=>"e2", 3=>         "g3"});                  # Greater on bit 3 and all preceding bits are equal
+  gate("and",    "c4",  {1=>"e1", 2=>"e2", 3=>"e3", 4=>"g4"});                  # Greater on bit 4 and all preceding bits are equal
+  gate("or",     "or",  {1=>"g1", 2=>"c2", 3=>"c3", 4=>"c4"});                  # Any set bit indicates that 'a' is greater than 'b'
   gate("output", "out", "or");
   is_deeply(simulate({a1=>1, a2=>0, a3=>1, a4=>0,
                       b1=>1, b2=>0, b3=>1, b4=>0})->values->{out}, 0);
+  my $s = simulate({a1=>1, a2=>1, a3=>1, a4=>0,
+                    b1=>1, b2=>0, b3=>1, b4=>0});
+
+  is_deeply($s->values->{out}, 1);
+
   is_deeply(simulate({a1=>1, a2=>1, a3=>1, a4=>0,
                       b1=>1, b2=>0, b3=>1, b4=>0})->values->{out}, 1);
  }
