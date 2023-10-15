@@ -29,19 +29,24 @@ sub gate($$;$)                                                                  
   if ($type =~ m(\Ainput\Z)i)                                                   # Input gates have no inputs
    {defined($inputs) and confess "No input hash allowed for input gate '$output'\n";
    }
-  elsif ($type =~ m(\A(and|nand|nor|nxor|or|xor)\Z)i)
+  elsif ($type =~ m(\A(not|output)\Z)i)                                         # These gates have one input expressed as a name rather than a hash
+   {!defined($inputs) and confess "Input name required for gate '$output'\n";
+    ref($inputs) =~ m(hash)i and confess "Scalar input name required for '$output'\n";
+    $inputs = {$output=>$inputs};                                               # Convert convenient scalar name to hash for consistency with gates in general
+   }
+  elsif ($type =~ m(\A(nxor|xor)\Z)i)                                           # These gates must have exactly two inputs expressed as a hash mapping input pin name to connection to a named gate.  These operations are associative.
+   {!defined($inputs) and confess "Input hash required for gate '$output'\n";
+    ref($inputs) =~ m(hash)i or confess "Inputs must be a hash of input names to outputs for '$output' to show the output accepted by each input. Input gates have no inputs, they are supplied instead during simulation\n";
+    keys(%$inputs) == 2 or confess "Two inputs required for gate: '$output'\n";
+   }
+  elsif ($type =~ m(\A(and|nand|nor|or)\Z)i)                                    # These gates must have two or more inputs expressed as a hash mapping input pin name to connection to a named gate.  These operations are associative.
    {!defined($inputs) and confess "Input hash required for gate '$output'\n";
     ref($inputs) =~ m(hash)i or confess "Inputs must be a hash of input names to outputs for '$output' to show the output accepted by each input. Input gates have no inputs, they are supplied instead during simulation\n";
     keys(%$inputs) < 2 and confess "Two or more inputs required for gate: '$output'\n";
    }
-  elsif ($type =~ m(\A(not|output)\Z)i)
-   {!defined($inputs) and confess "Input name required for gate '$output'\n";
-    ref($inputs) =~ m(hash)i and confess "Scalar input name required for '$output'\n";
-    $inputs = {1=>$inputs};                                                     # Convert convenient scalar name to hash for consistency with gates in general
-   }
-  else                                                                          # Possible gate types
-   {my $possibleTypes = q(and|input|nand|nor|not|nxor|or|output|xor);
-    confess "Invalid gate type '$type' for gate '$output', possible types are: $possibleTypes\n";
+  else                                                                          # Unknown gate type
+   {my $possibleTypes = q(and|input|nand|nor|not|nxor|or|output|xor);           # Possible gate types
+    confess "Unknown gate type '$type' for gate '$output', possible types are: $possibleTypes\n";
    }
 
   my $g = genHash("Icd::Designer::Gate",                                        # Gate
@@ -99,19 +104,28 @@ sub simulate($%)                                                                
 
       if (!$u)                                                                  # All inputs defined
        {my $r;                                                                  # Result of gate operation
-        if ($t =~ m(\Aand\Z)i)                                                  # Elaborate an AND gate
+        if ($t =~ m(\Aand|nand\Z)i)                                             # Elaborate an AND gate
          {my $f = 0;                                                            # Number of low inputs
           for my $i(sort keys %i)
            {++$f unless $values{$i{$i}};
 
            }
           $r = $f ? 0 : 1;                                                      # Resulting output
+          $r = !$r if $t =~ m(\Anand\Z)i;
          }
-        elsif ($t =~ m(\A(or|output)\Z)i)                                       # Elaborate an OR or OUTPUT gate
+        elsif ($t =~ m(\A(nor|not|or|output)\Z)i)                               # Elaborate NOT, OR or OUTPUT gate
          {$r = 0;
           for my $i(sort keys %i)
            {$r ||= 1 if $values{$i{$i}};                                        # Output gate is or of all its inputs
            }
+          $r = !$r if $t =~ m(\Anor|not\Z)i;
+         }
+        elsif ($t =~ m(\A(nxor|xor)\Z)i)                                        # Elaborate XOR
+         {$r = 0;
+          for my $i(sort keys %i)
+           {$r ||= 1 if $values{$i{$i}};                                        # Output gate is or of all its inputs
+           }
+          $r = !$r if $t =~ m(\Anor|not\Z)i;
          }
         else
          {confess "Need implementation for '$t' gates";                         # Elaborate an OR or OUTPUT gate
