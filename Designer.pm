@@ -230,14 +230,14 @@ if (1)                                                                          
 
 #latest:;
 if (1)                                                                          # 4 bit comparator
- {start;                                                                        # First number
-  gate("input",  "a$_") for 1..4;                                               # Second number
-  gate("input",  "b$_") for 1..4;                                               # Test each bit for equality
-  gate("nxor",   "e$_", {1=>"a$_", 2=>"b$_"}) for 1..4;
-  gate("and",    "and", {map{$_=>"e$_"} 1..4});
+ {start;
+  gate("input",  "a$_") for 1..4;                                               # First number
+  gate("input",  "b$_") for 1..4;                                               # Second number
+  gate("nxor",   "e$_", {1=>"a$_", 2=>"b$_"}) for 1..4;                         # Test each bit for equality
+  gate("and",    "and", {map{$_=>"e$_"} 1..4});                                 # And tests together to get equality
   gate("output", "out", "and");
-  my $s  = simulate({a1=>1, a2=>0, a3=>1, a4=>0, b1=>1, b2=>0, b3=>1, b4=>0});
-  ok($s->values->{out}  == 1);
-     $s  = simulate({a1=>1, a2=>1, a3=>1, a4=>0, b1=>1, b2=>0, b3=>1, b4=>0});
-  ok($s->values->{out}  == 0);
+  is_deeply(simulate({a1=>1, a2=>0, a3=>1, a4=>0,
+                      b1=>1, b2=>0, b3=>1, b4=>0})->values->{out}, 1);
+  is_deeply(simulate({a1=>1, a2=>1, a3=>1, a4=>0,
+                      b1=>1, b2=>0, b3=>1, b4=>0})->values->{out}, 0);
  }
