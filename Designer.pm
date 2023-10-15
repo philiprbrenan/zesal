@@ -96,6 +96,7 @@ sub simulate($%)                                                                
       my $t = $g->type;                                                         # Gate type
       next if $t =~ m(\Ainput\Z)i;                                              # No need to calculate value of input gates
       my %i = $g->inputs->%*;                                                   # Inputs to gate
+      my @i = @values{values %i};                                               # Values of inputs to gates
 
       my $u = 0;                                                                # Number of undefined inputs
       for my $i(sort keys %i)
@@ -105,30 +106,27 @@ sub simulate($%)                                                                
       if (!$u)                                                                  # All inputs defined
        {my $r;                                                                  # Result of gate operation
         if ($t =~ m(\Aand|nand\Z)i)                                             # Elaborate an AND gate
-         {my $f = 0;                                                            # Number of low inputs
-          for my $i(sort keys %i)
-           {++$f unless $values{$i{$i}};
-
+         {my $z = 0;
+          for my $i(@i)
+           {++$z if !$i;
            }
-          $r = $f ? 0 : 1;                                                      # Resulting output
+          $r = $z ? 0 : 1;
           $r = !$r if $t =~ m(\Anand\Z)i;
          }
         elsif ($t =~ m(\A(nor|not|or|output)\Z)i)                               # Elaborate NOT, OR or OUTPUT gate
-         {$r = 0;
-          for my $i(sort keys %i)
-           {$r ||= 1 if $values{$i{$i}};                                        # Output gate is or of all its inputs
+         {my $o = 0;
+          for my $i(@i)
+           {++$o if $i;
            }
+          $r = $o ? 1 : 0;
           $r = !$r if $t =~ m(\Anor|not\Z)i;
          }
         elsif ($t =~ m(\A(nxor|xor)\Z)i)                                        # Elaborate XOR
-         {$r = 0;
-          for my $i(sort keys %i)
-           {$r ||= 1 if $values{$i{$i}};                                        # Output gate is or of all its inputs
-           }
-          $r = !$r if $t =~ m(\Anor|not\Z)i;
+         {$r = $i[0] ^ $i[1];
+          $r = !$r if $t =~ m(\Anxor\Z)i;
          }
-        else
-         {confess "Need implementation for '$t' gates";                         # Elaborate an OR or OUTPUT gate
+        else                                                                    # Unknown gate type
+         {confess "Need implementation for '$t' gates";
          }
         $changes{$G} = $r unless defined($values{$G}) and $values{$G} == $r;    # Value computed by this gate
        }
@@ -227,5 +225,19 @@ if (1)                                                                          
   ok($s->values->{or}  == 1);
      $s  = simulate({i11=>1, i12=>0, i21=>1, i22=>0});
   ok($s->steps         == 3);
-  ok($s->values->{or}  == 0);
+  ok($s->values->{o}   == 0);
+ }
+
+#latest:;
+if (1)                                                                          # 4 bit comparator
+ {start;                                                                        # First number
+  gate("input",  "a$_") for 1..4;                                               # Second number
+  gate("input",  "b$_") for 1..4;                                               # Test each bit for equality
+  gate("nxor",   "e$_", {1=>"a$_", 2=>"b$_"}) for 1..4;
+  gate("and",    "and", {map{$_=>"e$_"} 1..4});
+  gate("output", "out", "and");
+  my $s  = simulate({a1=>1, a2=>0, a3=>1, a4=>0, b1=>1, b2=>0, b3=>1, b4=>0});
+  ok($s->values->{out}  == 1);
+     $s  = simulate({a1=>1, a2=>1, a3=>1, a4=>0, b1=>1, b2=>0, b3=>1, b4=>0});
+  ok($s->values->{out}  == 0);
  }
