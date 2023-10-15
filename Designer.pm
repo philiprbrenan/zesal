@@ -189,7 +189,29 @@ if (1)                                                                          
   my $s  = simulate({i11=>1, i12=>1, i21=>1, i22=>1});
   ok($s->steps         == 3);
   ok($s->values->{and} == 1);
-  my $S  = simulate({i11=>1, i12=>0, i21=>1, i22=>1});
-  ok($S->steps         == 3);
-  ok($S->values->{and} == 0);
+     $s  = simulate({i11=>1, i12=>0, i21=>1, i22=>1});
+  ok($s->steps         == 3);
+  ok($s->values->{and} == 0);
+ }
+
+#latest:;
+if (1)                                                                          # Two AND gates driving an OR gate a tree
+ {start;
+  gate("input",  "i11");
+  gate("input",  "i12");
+  gate("and",    "and1", {1=>q(i11),  2=>q(i12)});
+  gate("input",  "i21");
+  gate("input",  "i22");
+  gate("and",    "and2", {1=>q(i21),  2=>q(i22)});
+  gate("or",     "or",   {1=>q(and1), 2=>q(and2)});
+  gate("output", "o", "or");
+  my $s  = simulate({i11=>1, i12=>1, i21=>1, i22=>1});
+  ok($s->steps         == 3);
+  ok($s->values->{or}  == 1);
+     $s  = simulate({i11=>1, i12=>0, i21=>1, i22=>1});
+  ok($s->steps         == 3);
+  ok($s->values->{or}  == 1);
+     $s  = simulate({i11=>1, i12=>0, i21=>1, i22=>0});
+  ok($s->steps         == 3);
+  ok($s->values->{or}  == 0);
  }
