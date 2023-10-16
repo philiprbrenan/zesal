@@ -1,4 +1,4 @@
-# Test 2023-10-16 at 05:53:38
+# Test 2023-10-16 at 22:58:15
 
 name: Test
 
@@ -32,9 +32,9 @@ jobs:
       run:
         perl Zesal.pm
 
-    - name: Test Perl integrated circuit designer
+    - name: Test Perl implemented integrated circuits
       run:
-        perl Designer.pm
+        perl Chip.pm
 
     - name: Test Verilog
       run:
