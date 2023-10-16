@@ -295,10 +295,37 @@ if (1)                                                                          
     i21=>0, i22=>0, i23=>1, i24=>0,
     i31=>0, i32=>1, i33=>0, i34=>0,
     i41=>1, i42=>0, i43=>0, i44=>0});
-  is_deeply($s->values->{o1}, 0);
-  is_deeply($s->values->{o2}, 0);
-  is_deeply($s->values->{o3}, 1);
-  is_deeply($s->values->{o4}, 0);
 
+  is_deeply([@{$s->values}{qw(o1 o2 o3 o4)}], [qw(0 0 1 0)]);                   # Number selected by mask
   is_deeply($s->steps, 3);
  }
+
+#latest:;
+#if (1)                                                                         # Find smallest key bigger than the specified key
+# {my $B = 4; my $W = 4;
+#  start;
+#  for my $w(1..$W)                                                             # Input words
+#   {gate("input", "s$w");                                                      # Selection mask
+#    for my $b(1..$B)                                                           # Bits of input word
+#     {gate("input", "i$w$b");
+#      gate("and",   "s$w$b", {1=>"i$w$b", 2=>"s$w"});
+#     }
+#   }
+#  for my $b(1..$B)                                                              # Or selected bits together to make output
+#   {gate("or",     "c$b", {map {$_=>"s$b$_"} 1..$W});                           # Combine the selected bits to make a word
+#    gate("output", "o$b", "c$b");                                               # Output the word selected
+#   }
+#  my $s = simulate(
+#   {s1 =>0, s2 =>0, s3 =>1, s4=>0,
+#    i11=>0, i12=>0, i13=>0, i14=>1,
+#    i21=>0, i22=>0, i23=>1, i24=>0,
+#    i31=>0, i32=>1, i33=>0, i34=>0,
+#    i41=>1, i42=>0, i43=>0, i44=>0});
+#  is_deeply($s->values->{o1}, 0);
+#  is_deeply($s->values->{o2}, 0);
+#  is_deeply($s->values->{o3}, 1);
+#  is_deeply($s->values->{o4}, 0);
+#
+#  is_deeply($s->steps, 3);
+# }
+#
