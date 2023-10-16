@@ -256,7 +256,7 @@ if (1)                                                                          
  }
 
 #latest:;
-if (1)                                                                          # 4 bit 'a' greater than 'b'
+if (1)                                                                          # 4 bit 'a' greater than 'b' - the pins used to input 'a' must be alphabetically less than those used for 'b'
  {my $B = 4;
   start;
   gate("input",  "a$_") for 1..$B;                                              # First number
@@ -270,11 +270,35 @@ if (1)                                                                          
   gate("output", "out", "or");
   is_deeply(simulate({a1=>1, a2=>0, a3=>1, a4=>0,
                       b1=>1, b2=>0, b3=>1, b4=>0})->values->{out}, 0);
-  my $s = simulate({a1=>1, a2=>1, a3=>1, a4=>0,
-                    b1=>1, b2=>0, b3=>1, b4=>0});
-
-  is_deeply($s->values->{out}, 1);
-
   is_deeply(simulate({a1=>1, a2=>1, a3=>1, a4=>0,
                       b1=>1, b2=>0, b3=>1, b4=>0})->values->{out}, 1);
+ }
+
+#latest:;
+if (1)                                                                          # Masked multiplexer: copy B bit word selected by mask from W possible locations
+ {my $B = 4; my $W = 4;
+  start;
+  for my $w(1..$W)                                                              # Input words
+   {gate("input", "s$w");                                                       # Selection mask
+    for my $b(1..$B)                                                            # Bits of input word
+     {gate("input", "i$w$b");
+      gate("and",   "s$w$b", {1=>"i$w$b", 2=>"s$w"});
+     }
+   }
+  for my $b(1..$B)                                                              # Or selected bits together to make output
+   {gate("or",     "c$b", {map {$_=>"s$b$_"} 1..$W});                           # Combine the selected bits to make a word
+    gate("output", "o$b", "c$b");                                               # Output the word selected
+   }
+  my $s = simulate(
+   {s1 =>0, s2 =>0, s3 =>1, s4=>0,
+    i11=>0, i12=>0, i13=>0, i14=>1,
+    i21=>0, i22=>0, i23=>1, i24=>0,
+    i31=>0, i32=>1, i33=>0, i34=>0,
+    i41=>1, i42=>0, i43=>0, i44=>0});
+  is_deeply($s->values->{o1}, 0);
+  is_deeply($s->values->{o2}, 0);
+  is_deeply($s->values->{o3}, 1);
+  is_deeply($s->values->{o4}, 0);
+
+  is_deeply($s->steps, 3);
  }
