@@ -3,7 +3,8 @@
 We use an extreme [version](https://en.wikipedia.org/wiki/Software_versioning)
 of the [B-Tree](https://en.wikipedia.org/wiki/B-tree) algorithm in a
 form suitable for implementation on an [fpga](https://en.wikipedia.org/wiki/Field-programmable_gate_array)
-or as a doc on a chip. Each node of the [B-Tree](https://en.wikipedia.org/wiki/B-tree)
+or as a [Database on a Chip](https://github.com/philiprbrenan/zeroLowLevel)
+on a chip. Each node of the [B-Tree](https://en.wikipedia.org/wiki/B-tree)
 has perhaps 1M entries. Such the binary [tree](https://en.wikipedia.org/wiki/Tree_(data_structure))
 would need only two levels to hold 10^12 objects.
 
@@ -17,7 +18,10 @@ equals and search for smallest just bigger than a key.
 
 Typical interactions are to query the node for a key/data/node triple
 or to add a new key/data/node triple or to delete one. Performing these
-actions requires efficient implementations of the following operations
+actions requires efficient implementations of the following operations.
+
+Efficient parallel implementations of these algorithms using only
+AND|OR gates are demonstrated in **Designer.pm**.
 
 ## Find a key equal to the key being sought ##
 
