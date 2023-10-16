@@ -83,67 +83,75 @@ sub checkIO($%)                                                                 
    }
  }
 
+sub simulationStep($$$%)                                                        # One step in the simulation of the chip
+ {my ($chip, $inputs, $values, %options) = @_;                                  # Chip, Hash of input names to values, current value of every gate options
+  my $gates = $chip->gates;                                                     # Gates implementing the chip
+  my %changes;                                                                  # Changes made
+
+  for my $G(keys %$gates)                                                       # Each gate
+   {my $g = $$gates{$G};                                                        # Address gate
+    my $t = $g->type;                                                           # Gate type
+    next if $t =~ m(\Ainput\Z)i;                                                # No need to calculate value of input gates
+    my %i = $g->inputs->%*;                                                     # Inputs to gate
+    my @i = map {$$values{$i{$_}}} sort keys %i;                                # Values of inputs to gates in input pin name order
+
+    my $u = 0;                                                                  # Number of undefined inputs
+    for my $i(@i)
+     {++$u unless defined $i;
+     }
+
+    if (!$u)                                                                    # All inputs defined
+     {my $r;                                                                    # Result of gate operation
+      if ($t =~ m(\Aand|nand\Z)i)                                               # Elaborate an AND gate
+       {my $z = 0;
+        for my $i(@i)
+         {++$z if !$i;
+         }
+        $r = $z ? 0 : 1;
+        $r = !$r if $t =~ m(\Anand\Z)i;
+       }
+      elsif ($t =~ m(\A(nor|not|or|output)\Z)i)                                 # Elaborate NOT, OR or OUTPUT gate
+       {my $o = 0;
+        for my $i(@i)
+         {++$o if $i;
+         }
+        $r = $o ? 1 : 0;
+        $r = !$r if $t =~ m(\Anor|not\Z)i;
+       }
+      elsif ($t =~ m(\A(nxor|xor)\Z)i)                                          # Elaborate XOR
+       {@i == 2 or confess;
+        $r = $i[0] ^ $i[1] ? 1 : 0;
+        $r = $r ? 0 : 1 if $t =~ m(\Anxor\Z)i;
+       }
+      elsif ($t =~ m(\A(gt|ngt)\Z)i)                                            # Elaborate A GT B - the input pins are assumed to be sorted by name with the first pin as A and the second as B
+       {@i == 2 or confess;
+        $r = $i[0] > $i[1] ? 1 : 0;
+        $r = $r ? 0 : 1 if $t =~ m(\Angt\Z)i;
+       }
+      elsif ($t =~ m(\A(lt|nlt)\Z)i)                                            # Elaborate A LT B - the input pins are assumed to be sorted by name with the first pin as A and the second as B
+       {@i == 2 or confess;
+        $r = $i[0] < $i[1] ? 1 : 0;
+        $r = $r ? 0 : 1 if $t =~ m(\Anlt\Z)i;
+       }
+      else                                                                      # Unknown gate type
+       {confess "Need implementation for '$t' gates";
+       }
+      $changes{$G} = $r unless defined($$values{$G}) and $$values{$G} == $r;    # Value computed by this gate
+     }
+   }
+  %changes
+ }
+
 sub simulate($$%)                                                               # Simulate the set of gates until nothing changes.  This should be possible as feedback loops are banned.
  {my ($chip, $inputs, %options) = @_;                                           # Chip, Hash of input names to values, options
   my $gates = $chip->gates;                                                     # Gates implementing the chip
 
   $chip->checkIO;                                                               # Check all inputs are connected to valid gates and that all outputs are used
 
-  my %values = %$inputs;                                                        # The current set of values contains justthe inouts at the start of the simulation
+  my %values = %$inputs;                                                        # The current set of values contains just the inputs at the start of the simulation
 
   my $t; for($t = 0; $t < maxSimulationSteps; ++$t)                             # Steps in time
-   {my %changes;                                                                # Changes made
-    for my $G(keys %$gates)                                                     # Each gate
-     {my $g = $$gates{$G};                                                      # Address gate
-      my $t = $g->type;                                                         # Gate type
-      next if $t =~ m(\Ainput\Z)i;                                              # No need to calculate value of input gates
-      my %i = $g->inputs->%*;                                                   # Inputs to gate
-      my @i = map {$values{$i{$_}}} sort keys %i;                               # Values of inputs to gates in input pin name order
-
-      my $u = 0;                                                                # Number of undefined inputs
-      for my $i(@i)
-       {++$u unless defined $i;
-       }
-
-      if (!$u)                                                                  # All inputs defined
-       {my $r;                                                                  # Result of gate operation
-        if ($t =~ m(\Aand|nand\Z)i)                                             # Elaborate an AND gate
-         {my $z = 0;
-          for my $i(@i)
-           {++$z if !$i;
-           }
-          $r = $z ? 0 : 1;
-          $r = !$r if $t =~ m(\Anand\Z)i;
-         }
-        elsif ($t =~ m(\A(nor|not|or|output)\Z)i)                               # Elaborate NOT, OR or OUTPUT gate
-         {my $o = 0;
-          for my $i(@i)
-           {++$o if $i;
-           }
-          $r = $o ? 1 : 0;
-          $r = !$r if $t =~ m(\Anor|not\Z)i;
-         }
-        elsif ($t =~ m(\A(nxor|xor)\Z)i)                                        # Elaborate XOR
-         {@i == 2 or confess;
-          $r = $i[0] ^ $i[1] ? 1 : 0;
-          $r = $r ? 0 : 1 if $t =~ m(\Anxor\Z)i;
-         }
-        elsif ($t =~ m(\A(gt|ngt)\Z)i)                                          # Elaborate A GT B - the input pins are assumed to be sorted by name with the first pin as A and the second as B
-         {@i == 2 or confess;
-          $r = $i[0] > $i[1] ? 1 : 0;
-          $r = $r ? 0 : 1 if $t =~ m(\Angt\Z)i;
-         }
-        elsif ($t =~ m(\A(lt|nlt)\Z)i)                                          # Elaborate A LT B - the input pins are assumed to be sorted by name with the first pin as A and the second as B
-         {@i == 2 or confess;
-          $r = $i[0] < $i[1] ? 1 : 0;
-          $r = $r ? 0 : 1 if $t =~ m(\Anlt\Z)i;
-         }
-        else                                                                    # Unknown gate type
-         {confess "Need implementation for '$t' gates";
-         }
-        $changes{$G} = $r unless defined($values{$G}) and $values{$G} == $r;    # Value computed by this gate
-       }
-     }
+   {my %changes = $chip->simulationStep($inputs, \%values);                     # Changes made
 
     last unless keys %changes;                                                  # Keep going until nothing changes
     for my $c(keys %changes)                                                    # Update state of circuit
