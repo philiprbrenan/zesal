@@ -290,7 +290,7 @@ if (1)                                                                          
     gate("output", "o$b", "c$b");                                               # Output the word selected
    }
   my $s = simulate(
-   {s1 =>0, s2 =>0, s3 =>1, s4=>0,
+   {s1 =>0, s2 =>0, s3 =>1, s4 =>0,
     i11=>0, i12=>0, i13=>0, i14=>1,
     i21=>0, i22=>0, i23=>1, i24=>0,
     i31=>0, i32=>1, i33=>0, i34=>0,
