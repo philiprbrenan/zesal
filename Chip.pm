@@ -1,6 +1,6 @@
 #!/usr/bin/perl -I/home/phil/perl/cpan/DataTableText/lib/
 #-------------------------------------------------------------------------------
-# Design a combinatorial set of gates with no loops
+# Design a chip by combining gates and sub chips.
 # Philip R Brenan at appaapps dot com, Appa Apps Ltd Inc., 2023
 #-------------------------------------------------------------------------------
 use v5.34;
@@ -11,12 +11,78 @@ use Carp;
 use Data::Dump qw(dump);
 use Data::Table::Text qw(:all);
 
+makeDieConfess;
+
 sub maxSimulationSteps {100}                                                    # Maximum simulation steps
 
-sub new()                                                                       # Create a new chip
- {genHash(__PACKAGE__,                                                          # Chip description
-    gates=>{},                                                                  # Gates in chip
+sub newChip(%)                                                                  # Create a new chip
+ {my (%options) = @_;                                                           # Options
+  genHash(__PACKAGE__,                                                          # Chip description
+    name    => $options{name   } // "Unnamed chip: ".timeStamp,                 # Name of chip
+    gates   => $options{gates  } // {},                                         # Gates in chip
+    installs=> $options{chips  } // [],                                         # Chips installed within the chip
    );
+ }
+
+sub newGate($$$$)                                                               # Make a gate
+ {my ($chip, $type, $output, $inputs) = @_;                                     # Chip, gate type, output name, input names to output from another gate
+
+  my $g = genHash("Icd::Designer::Gate",                                        # Gate
+   type   => $type,                                                             # Gate type
+   output => $output,                                                           # Output name which is used as the name of the gate as well
+   inputs => $inputs,                                                           # Input names to driving outputs
+  );
+ }
+
+sub cloneGate($$)                                                               # Clone a gate
+ {my ($chip, $gate) = @_;                                                       # Chip, gate
+  newGate($chip, $gate->type, $gate->output, $gate->inputs)
+ }
+
+sub renameGateInputs($$$)                                                       # Rename the inputs of a gate
+ {my ($chip, $gate, $name) = @_;                                                # Chip, gate, prefix name
+  for my $p(qw(inputs))
+   {my %i;
+    my $i = $gate->inputs;
+    for my $n(sort keys %$i)
+     {$i{$n} = sprintf "(%s %s)", $name, $$i{$n};
+     }
+    $gate->inputs = \%i;
+   }
+  $gate
+ }
+
+sub renameGate($$$)                                                             # Rename a gate by adding a prefix
+ {my ($chip, $gate, $name) = @_;                                                # Chip, gate, prefix name
+  $gate->output = sprintf "(%s %s)", $name, $gate->output;
+  $gate
+ }
+
+sub dumpGates($$)                                                               # Dump some gates
+ {my ($chip, $gates) = @_;                                                      # Chip, gates
+  my @s;
+  for my $G(sort keys %$gates)
+   {my $g = $$gates{$G};
+    my %i = $g->inputs ? $g->inputs->%* : ();
+    my $p = sprintf "%-12s: %-8s", $g->output, $g->type;
+    if (my @i = map {$i{$_}} sort keys %i)
+     {my $i = join " ", @i;
+      $p .= $i;
+     }
+    push @s, $p;
+   }
+  say STDERR join "\n", @s;
+ }
+
+sub install($$$%)                                                               # Install a chip within another chip specifying the connections between the inner and outer chip.  The same chip can be installed multiple times as each chip description is read only.
+ {my ($chip, $subChip, $inputs, $outputs, %options) = @_;                       # Outer chip, inner chip, inputs of inner chip to to outputs of outer chip, outputs of inner chip to inputs of outer chip
+  my $c = genHash("Chip::Install",                                              # Installation of a chip within a chip
+    chip    => $subChip,                                                        # Chip being installed
+    inputs  => $inputs,                                                         # Outputs of outer chip to inputs of inner chip
+    outputs => $outputs,                                                        # Outputs of inner chip to inputs of outer chip
+   );
+  push $chip->installs->@*, $c;                                                 # Install chip
+  $c
  }
 
 sub gate($$$;$)                                                                 # A gate of some sort defined by its single output name
@@ -26,12 +92,19 @@ sub gate($$$;$)                                                                 
   $output =~ m(\A[a-z][a-z0-9_.:]*\Z)i or confess "Invalid gate name '$output'\n";
   $$gates{$output} and confess "Gate $output has already been specified\n";
 
-  if ($type =~ m(\Ainput\Z)i)                                                   # Input gates have no inputs
+  if ($type =~ m(\A(input)\Z)i)                                                 # Input gates have no inputs. Pins are used to accept outputs from a sub chip and to create inputs to sub chips
    {defined($inputs) and confess "No input hash allowed for input gate '$output'\n";
+    $inputs = {$output=>$output};                                             # Convert convenient scalar name to hash for consistency with gates in general
    }
-  elsif ($type =~ m(\A(not|output)\Z)i)                                         # These gates have one input expressed as a name rather than a hash
+  elsif ($type =~ m(\A(output)\Z)i)                                             # Output has one optional scalar value naming its input if known at this point
+   {if (defined($inputs))
+     {ref($inputs) and confess "Scalar input name required for output gate: '$output'\n";
+      $inputs = {$output=>$inputs};                                             # Convert convenient scalar name to hash for consistency with gates in general
+     }
+   }
+  elsif ($type =~ m(\A(not)\Z)i)                                                # These gates have one input expressed as a name rather than a hash
    {!defined($inputs) and confess "Input name required for gate '$output'\n";
-    ref($inputs) =~ m(hash)i and confess "Scalar input name required for '$output'\n";
+    $type =~ m(\Anot\Z)i and ref($inputs) =~ m(hash)i and confess "Scalar input name required for '$output'\n";
     $inputs = {$output=>$inputs};                                               # Convert convenient scalar name to hash for consistency with gates in general
    }
   elsif ($type =~ m(\A(nxor|xor|gt|ngt|lt|nlt)\Z)i)                             # These gates must have exactly two inputs expressed as a hash mapping input pin name to connection to a named gate.  These operations are associative.
@@ -49,30 +122,83 @@ sub gate($$$;$)                                                                 
     confess "Unknown gate type '$type' for gate '$output', possible types are: $possibleTypes\n";
    }
 
-  my $g = genHash("Icd::Designer::Gate",                                        # Gate
-   type   => $type,                                                             # Gate type
-   output => $output,                                                           # Output name
-   inputs => $inputs,                                                           # Input names to driving outputs
-  );
+  $chip->gates->{$output} = newGate($chip, $type, $output, $inputs);            # Construct gate, save it and return it
+ }
 
-  $$gates{$output} = $g                                                         # Record gate and return it
+sub getGates($%)                                                                # Get the gates of a chip and all it installed sub chips
+ {my ($chip, %options) = @_;                                                    # Chip, options
+
+  my %outerGates;
+  for my $g(values $chip->gates->%*)                                            # Copy gates from outer chip
+   {$outerGates{$g->output} = cloneGate($chip, $g);
+   }
+
+  my @installs = $chip->installs->@*;                                           # Each sub chip used in this chip
+
+  for my $install(keys @installs)                                               # Each sub chip
+   {my $s = $installs[$install];                                                # Sub chip installed in this chip
+    my $n = $s->chip->name;                                                     # Name of sub chip
+    my $innerGates = __SUB__->($s->chip);                                       # Gates in sub chip
+
+    for my $G(sort keys %$innerGates)                                           # Each gate in sub chip
+     {my $g = $$innerGates{$G};                                                 # Gate in sub chip
+      my $o = $g->output;                                                       # Name of gate
+      my $copy = $chip->cloneGate($g);                                          # Clone gate from chip description
+      my $newGateName = sprintf "$n %d", $install+1;                            # Rename gates to prevent name collisions from the expansions of the definitions of the inner chips
+
+      if ($copy->type =~ m(\Ainput\Z)i)                                         # Input gate on inner chip - connect to corresponding output gate on containing chip
+       {my $in = $copy->output;                                                 # Name of input gate on inner chip
+        my $o  = $s->inputs->{$in};
+           $o or confess "No connection specified to inner input gate '$in' on sub chip '$n'";
+        my $O  = $outerGates{$o};
+           $O or confess "No outer output gate '$o' to connect to inner input gate '$in' on sub chip '$n'";
+        my $ot = $O->type;
+        my $on = $O->output;
+           $ot =~ m(\Aoutput\Z)i or confess "Output gate required for connection to $in on sub chip $n, not gate $on of type $ot";
+        $copy->inputs = {1 => $o};                                              # Connect inner input gate to outer output gate
+        $chip->renameGate($copy, $newGateName)
+       }
+
+      elsif ($copy->type =~ m(\Aoutput\Z)i)                                     # Output gate on inner chip - connect to corresponding input gate on containing chip
+       {my $on = $copy->output;                                                 # Name of output gate on outer chip
+        my $i  = $s->outputs->{$on};
+           $i or confess "No connection specified to inner output gate '$on' on sub chip '$n'";
+        my $I  = $outerGates{$i};
+           $I or confess "No outer input gate '$i' to connect to inner output gate $on on sub chip '$n'";
+        my $it = $I->type;
+        my $in = $I->output;
+           $it =~ m(\Ainput\Z)i or confess "Input gate required for connection to '$in' on sub chip '$n', not gate '$in' of type '$it'";
+        $chip->renameGateInputs($copy, $newGateName);
+        $chip->renameGate      ($copy, $newGateName);
+        $I->inputs = {11 => $copy->output};                                     # Connect inner output gate to outer input gate
+       }
+      else                                                                      # Rename all other gate inputs
+       {$chip->renameGateInputs($copy, $newGateName);
+        $chip->renameGate($copy, $newGateName)
+       }
+
+      $outerGates{$copy->output} = $copy;                                       # Install gate with new name now it has been connected up
+     }
+   }
+  \%outerGates                                                                  # Return all the gates in the chip extended by its sub chips
  }
 
 sub checkIO($%)                                                                 # Check that every input is connected to one output
- {my ($chip, %options) = @_;                                                    # Chip, options
-  my $gates = $chip->gates;                                                     # Gates implementing the chip
+ {my ($chip, $gates, %options) = @_;                                            # Chip, gates in chip plus all sub chips as supplied by L<getGates>.
 
   my %o;
   for my $G(sort keys %$gates)                                                  # Find all inputs and outputs
    {my $g = $$gates{$G};                                                        # Address gate
-    next if $g->type =~ m(\Ainput\Z)i;                                          # Inputs are driven externally during simulation
+    next unless $g->inputs;                                                     # Inputs are driven externally during simulation
     my %i = $g->inputs->%*;                                                     # Inputs for gate
     for my $i(sort keys %i)                                                     # Each input
      {my $o = $i{$i};                                                           # Output driving input
       if (!exists $$gates{$o})                                                  # No driving output
        {confess "No output driving input '$o' on gate '$G'\n";
        }
-      $o{$o}++                                                                  # Show that this output has been used
+      elsif ($g->type !~ m(\Ainput\Z)i or ($i{$g->output}//'') ne $g->output)   # Input gate at highest level driving itself so we ignore itr so that if nothing else sues this gate it gets flagged as non driving
+       {$o{$o}++                                                                # Show that this output has been used
+       }
      }
    }
 
@@ -83,15 +209,15 @@ sub checkIO($%)                                                                 
    }
  }
 
-sub simulationStep($$$%)                                                        # One step in the simulation of the chip
- {my ($chip, $inputs, $values, %options) = @_;                                  # Chip, Hash of input names to values, current value of every gate options
-  my $gates = $chip->gates;                                                     # Gates implementing the chip
+sub simulationStep($$$%)                                                        # One step in the simulation of the chip after expansion of inner chips
+ {my ($chip, $gates, $values, %options) = @_;                                   # Chip, gates, current value of each gate, options
   my %changes;                                                                  # Changes made
 
   for my $G(keys %$gates)                                                       # Each gate
    {my $g = $$gates{$G};                                                        # Address gate
     my $t = $g->type;                                                           # Gate type
-    next if $t =~ m(\Ainput\Z)i;                                                # No need to calculate value of input gates
+    my $n = $g->output;                                                         # Gate name
+    next unless $g->inputs;                                                     # No need to calculate value of input gates
     my %i = $g->inputs->%*;                                                     # Inputs to gate
     my @i = map {$$values{$i{$_}}} sort keys %i;                                # Values of inputs to gates in input pin name order
 
@@ -110,7 +236,16 @@ sub simulationStep($$$%)                                                        
         $r = $z ? 0 : 1;
         $r = !$r if $t =~ m(\Anand\Z)i;
        }
-      elsif ($t =~ m(\A(nor|not|or|output)\Z)i)                                 # Elaborate NOT, OR or OUTPUT gate
+      elsif ($t =~ m(\A(input)\Z)i)                                             # An input gate takes its value from the list of inputs or from an output gate in an inner chip
+       {if (my @i = values $g->inputs->%*)                                      # Get the value of the input gate from the current values
+         {my $n = $i[0];
+             $r = $$values{$n};
+         }
+        else
+         {confess "No driver for input gate $n";
+         }
+       }
+      elsif ($t =~ m(\A(continue|nor|not|or|output)\Z)i)                        # Elaborate NOT, OR or OUTPUT gate. A CONTINUE gate places its single input unchanged on its output
        {my $o = 0;
         for my $i(@i)
          {++$o if $i;
@@ -142,27 +277,36 @@ sub simulationStep($$$%)                                                        
   %changes
  }
 
+sub simulationResults($$%)                                                      # Simulation result
+ {my ($chip, $values, %options) = @_;                                           # Chip, hash of final values for each gate, options
+
+  genHash("Idc::Designer::Simulation::Results",                                 # Simulation results
+    steps  => $options{steps},                                                  # Number of steps to reach stability
+    values => $values,                                                          # Values of every output at point of stability
+   );
+ }
+
 sub simulate($$%)                                                               # Simulate the set of gates until nothing changes.  This should be possible as feedback loops are banned.
  {my ($chip, $inputs, %options) = @_;                                           # Chip, Hash of input names to values, options
-  my $gates = $chip->gates;                                                     # Gates implementing the chip
+  my $gates = $chip->getGates;                                                  # Gates implementing the chip and all of its sub chips
 
-  $chip->checkIO;                                                               # Check all inputs are connected to valid gates and that all outputs are used
+  $chip->dumpGates($gates) if $options{dumpGates};
+  $chip->checkIO($gates);                                                       # Check all inputs are connected to valid gates and that all outputs are used
 
-  my %values = %$inputs;                                                        # The current set of values contains just the inputs at the start of the simulation
+  my %values = %$inputs;                                                        # The current set of values contains just the inputs at the start of the simulation.
 
-  my $t; for($t = 0; $t < maxSimulationSteps; ++$t)                             # Steps in time
-   {my %changes = $chip->simulationStep($inputs, \%values);                     # Changes made
+  my $T = maxSimulationSteps;                                                   # Maximum steps
+  for my $t(0..$T)                                                              # Steps in time
+   {my %changes = $chip->simulationStep($gates, \%values);                      # Changes made
 
-    last unless keys %changes;                                                  # Keep going until nothing changes
+    return $chip->simulationResults(\%values, steps=>$t) unless keys %changes;  # Keep going until nothing changes
+
     for my $c(keys %changes)                                                    # Update state of circuit
      {$values{$c} = $changes{$c};
      }
    }
 
-  genHash("Idc::Designer::Simulation::Results",                                 # Simulation results
-    steps  => $t,                                                               # Number of steps to achieve no change anywhere
-    values => \%values,                                                         # Values of every output at point of stability
-   );
+  confess "Out of time after $T steps";                                         # Not enough steps available
  }
 
 #D0 Tests                                                                       # Tests and examples
@@ -173,14 +317,14 @@ eval "Test::More->builder->output('/dev/null');" if -e q(/home/phil2/);
 eval {goto latest};
 
 if (1)                                                                          # Unused output
- {my $c = new;
+ {my $c = newChip;
   $c->gate("input",  "i1");
   eval {$c->simulate({i1=>1})};
   ok($@ =~ m(Output from gate 'i1' is never used)i);
  }
 
 if (1)                                                                          # Gate already specified
- {my $c = new;
+ {my $c = newChip;
         $c->gate("input",  "i1");
   eval {$c->gate("input",  "i1")};
   ok($@ =~ m(Gate i1 has already been specified));
@@ -188,7 +332,7 @@ if (1)                                                                          
 
 #latest:;
 if (1)                                                                          # Check all inputs
- {my $c = new;
+ {my $c = newChip;
   $c->gate("input",  "i1");
   $c->gate("input",  "i2");
   $c->gate("and",    "and1", {1=>q(i1), i2=>q(i2)});
@@ -199,7 +343,7 @@ if (1)                                                                          
 
 #latest:;
 if (1)                                                                          # Single AND gate
- {my $c = new;
+ {my $c = newChip;
   $c->gate("input",  "i1");
   $c->gate("input",  "i2");
   $c->gate("and",    "and1", {1=>q(i1), 2=>q(i2)});
@@ -211,7 +355,7 @@ if (1)                                                                          
 
 #latest:;
 if (1)                                                                          # Three AND gates in a tree
- {my $c = new;
+ {my $c = newChip;
   $c->gate("input",  "i11");
   $c->gate("input",  "i12");
   $c->gate("and",    "and1", {1=>q(i11),  2=>q(i12)});
@@ -230,7 +374,7 @@ if (1)                                                                          
 
 #latest:;
 if (1)                                                                          # Two AND gates driving an OR gate a tree
- {my $c = new;
+ {my $c = newChip;
   $c->gate("input",  "i11");
   $c->gate("input",  "i12");
   $c->gate("and",    "and1", {1=>q(i11),  2=>q(i12)});
@@ -253,7 +397,7 @@ if (1)                                                                          
 #latest:;
 if (1)                                                                          # 4 bit comparator
  {my $B = 4;
-  my $c = new;
+  my $c = newChip;
   $c->gate("input",  "a$_") for 1..$B;                                          # First number
   $c->gate("input",  "b$_") for 1..$B;                                          # Second number
   $c->gate("nxor",   "e$_", {1=>"a$_", 2=>"b$_"}) for 1..$B;                    # Test each bit for equality
@@ -268,7 +412,7 @@ if (1)                                                                          
 #latest:;
 if (1)                                                                          # 4 bit 'a' greater than 'b' - the pins used to input 'a' must be alphabetically less than those used for 'b'
  {my $B = 4;
-  my $c = new;
+  my $c = newChip;
   $c->gate("input",  "a$_") for 1..$B;                                          # First number
   $c->gate("input",  "b$_") for 1..$B;                                          # Second number
   $c->gate("nxor",   "e$_", {1=>"a$_", 2=>"b$_"}) for 1..$B-1;                  # Test each bit for equality
@@ -287,7 +431,7 @@ if (1)                                                                          
 #latest:;
 if (1)                                                                          # Masked multiplexer: copy B bit word selected by mask from W possible locations
  {my $B = 4; my $W = 4;
-  my $c = new;
+  my $c = newChip;
   for my $w(1..$W)                                                              # Input words
    {$c->gate("input", "s$w");                                                   # Selection mask
     for my $b(1..$B)                                                            # Bits of input word
@@ -308,6 +452,42 @@ if (1)                                                                          
 
   is_deeply([@{$s->values}{qw(o1 o2 o3 o4)}], [qw(0 0 1 0)]);                   # Number selected by mask
   is_deeply($s->steps, 3);
+ }
+
+#latest:;
+if (1)                                                                          # Rename a gate
+ {my $i = newChip(name=>"inner");
+          $i->gate("input", "i");
+  my $n = $i->gate("not",   "n",  "i");
+          $i->gate("output","io", "n");
+
+  my $ci = $i->cloneGate($n);
+  $i->renameGate($ci, "aaa");
+  is_deeply($ci, { inputs => { n => "i" }, output => "(aaa n)", type => "not" });
+ }
+
+#latest:;
+if (1)                                                                          # Install one inside another chip
+ {my $i = newChip(name=>"inner");
+     $i->gate("input", "Ii");
+     $i->gate("not",   "In", "Ii");
+     $i->gate("output","Io", "In");
+
+  my $o = newChip(name=>"outer");
+     $o->gate("input",    "Oi1");
+     $o->gate("output",   "Oo1", "Oi1");
+     $o->gate("input",    "Oi2");
+     $o->gate("output",   "Oo2", "Oi2");
+     $o->gate("input",    "Oi3");
+     $o->gate("output",   "Oo3", "Oi3");
+     $o->gate("input",    "Oi4");
+     $o->gate("output",    "Oo", "Oi4");
+
+  $o->install($i, {Ii=>"Oo1"}, {Io=>"Oi2"});
+  $o->install($i, {Ii=>"Oo2"}, {Io=>"Oi3"});
+  $o->install($i, {Ii=>"Oo3"}, {Io=>"Oi4"});
+  my $s = $o->simulate({Oi1=>1});
+  is_deeply($s->values->{Oo}, 0);
  }
 
 #latest:;
