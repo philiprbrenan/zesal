@@ -61,13 +61,12 @@ sub renameGate($$$)                                                             
 sub dumpGates($$)                                                               # Dump some gates
  {my ($chip, $gates) = @_;                                                      # Chip, gates
   my @s;
-  for my $G(sort keys %$gates)
+  for my $G(sort keys %$gates)                                                  # Dump each gate one per line
    {my $g = $$gates{$G};
     my %i = $g->inputs ? $g->inputs->%* : ();
-    my $p = sprintf "%-12s: %-8s", $g->output, $g->type;
-    if (my @i = map {$i{$_}} sort keys %i)
-     {my $i = join " ", @i;
-      $p .= $i;
+    my $p = sprintf "%-12s: %-8s", $g->output, $g->type;                        # Instruction name and type
+    if (my @i = map {$i{$_}} sort keys %i)                                      # Add inputs in same line
+     {$p .= join " ", @i;
      }
     push @s, $p;
    }
@@ -92,9 +91,9 @@ sub gate($$$;$)                                                                 
   $output =~ m(\A[a-z][a-z0-9_.:]*\Z)i or confess "Invalid gate name '$output'\n";
   $$gates{$output} and confess "Gate $output has already been specified\n";
 
-  if ($type =~ m(\A(input)\Z)i)                                                 # Input gates have no inputs. Pins are used to accept outputs from a sub chip and to create inputs to sub chips
+  if ($type =~ m(\A(input)\Z)i)                                                 # Input gates input to themselves unless they have been connected to an output gate during sub chip expansion
    {defined($inputs) and confess "No input hash allowed for input gate '$output'\n";
-    $inputs = {$output=>$output};                                             # Convert convenient scalar name to hash for consistency with gates in general
+    $inputs = {$output=>$output};                                               # Convert convenient scalar name to hash for consistency with gates in general
    }
   elsif ($type =~ m(\A(output)\Z)i)                                             # Output has one optional scalar value naming its input if known at this point
    {if (defined($inputs))
@@ -202,7 +201,7 @@ sub checkIO($%)                                                                 
      }
    }
 
-  for my $G(sort keys %$gates)                                                  # Find all inputs and outputs
+  for my $G(sort keys %$gates)                                                  # Check all inputs and outputs are being used
    {my $g = $$gates{$G};                                                        # Address gate
     next if $g->type =~ m(\Aoutput\Z)i;
     $o{$G} or confess "Output from gate '$G' is never used\n";
@@ -213,11 +212,10 @@ sub simulationStep($$$%)                                                        
  {my ($chip, $gates, $values, %options) = @_;                                   # Chip, gates, current value of each gate, options
   my %changes;                                                                  # Changes made
 
-  for my $G(keys %$gates)                                                       # Each gate
+  for my $G(keys %$gates)                                                       # Output for each gate
    {my $g = $$gates{$G};                                                        # Address gate
     my $t = $g->type;                                                           # Gate type
     my $n = $g->output;                                                         # Gate name
-    next unless $g->inputs;                                                     # No need to calculate value of input gates
     my %i = $g->inputs->%*;                                                     # Inputs to gate
     my @i = map {$$values{$i{$_}}} sort keys %i;                                # Values of inputs to gates in input pin name order
 
@@ -228,11 +226,8 @@ sub simulationStep($$$%)                                                        
 
     if (!$u)                                                                    # All inputs defined
      {my $r;                                                                    # Result of gate operation
-      if ($t =~ m(\Aand|nand\Z)i)                                               # Elaborate an AND gate
-       {my $z = 0;
-        for my $i(@i)
-         {++$z if !$i;
-         }
+      if ($t =~ m(\Aand|nand\Z)i)                                               # Elaborate and AND gate
+       {my $z = grep {!$_} @i;                                                  # Count zero inputs to AND gate
         $r = $z ? 0 : 1;
         $r = !$r if $t =~ m(\Anand\Z)i;
        }
@@ -246,10 +241,7 @@ sub simulationStep($$$%)                                                        
          }
        }
       elsif ($t =~ m(\A(continue|nor|not|or|output)\Z)i)                        # Elaborate NOT, OR or OUTPUT gate. A CONTINUE gate places its single input unchanged on its output
-       {my $o = 0;
-        for my $i(@i)
-         {++$o if $i;
-         }
+       {my $o = grep {$_} @i;                                                   # Count one inputs
         $r = $o ? 1 : 0;
         $r = !$r if $t =~ m(\Anor|not\Z)i;
        }
@@ -467,7 +459,7 @@ if (1)                                                                          
  }
 
 #latest:;
-if (1)                                                                          # Install one inside another chip
+if (1)                                                                          # Install one inside another chip, specifically obe chip that performs NOT is installed three times sequentially to flip a value
  {my $i = newChip(name=>"inner");
      $i->gate("input", "Ii");
      $i->gate("not",   "In", "Ii");
