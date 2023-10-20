@@ -10,6 +10,7 @@ use strict;
 use Carp;
 use Data::Dump qw(dump);
 use Data::Table::Text qw(:all);
+use SVG;
 
 makeDieConfess;
 
@@ -34,12 +35,12 @@ sub newGate($$$$)                                                               
   );
  }
 
-sub cloneGate($$)                                                               # Clone a gate
+my sub cloneGate($$)                                                               # Clone a gate
  {my ($chip, $gate) = @_;                                                       # Chip, gate
   newGate($chip, $gate->type, $gate->output, $gate->inputs)
  }
 
-sub renameGateInputs($$$)                                                       # Rename the inputs of a gate
+my sub renameGateInputs($$$)                                                       # Rename the inputs of a gate
  {my ($chip, $gate, $name) = @_;                                                # Chip, gate, prefix name
   for my $p(qw(inputs))
    {my %i;
@@ -52,25 +53,10 @@ sub renameGateInputs($$$)                                                       
   $gate
  }
 
-sub renameGate($$$)                                                             # Rename a gate by adding a prefix
+my sub renameGate($$$)                                                             # Rename a gate by adding a prefix
  {my ($chip, $gate, $name) = @_;                                                # Chip, gate, prefix name
   $gate->output = sprintf "(%s %s)", $name, $gate->output;
   $gate
- }
-
-sub dumpGates($$)                                                               # Dump some gates
- {my ($chip, $gates) = @_;                                                      # Chip, gates
-  my @s;
-  for my $G(sort keys %$gates)                                                  # Dump each gate one per line
-   {my $g = $$gates{$G};
-    my %i = $g->inputs ? $g->inputs->%* : ();
-    my $p = sprintf "%-12s: %-8s", $g->output, $g->type;                        # Instruction name and type
-    if (my @i = map {$i{$_}} sort keys %i)                                      # Add inputs in same line
-     {$p .= join " ", @i;
-     }
-    push @s, $p;
-   }
-  say STDERR join "\n", @s;
  }
 
 sub install($$$%)                                                               # Install a chip within another chip specifying the connections between the inner and outer chip.  The same chip can be installed multiple times as each chip description is read only.
@@ -124,7 +110,7 @@ sub gate($$$;$)                                                                 
   $chip->gates->{$output} = newGate($chip, $type, $output, $inputs);            # Construct gate, save it and return it
  }
 
-sub getGates($%)                                                                # Get the gates of a chip and all it installed sub chips
+my sub getGates($%)                                                                # Get the gates of a chip and all it installed sub chips
  {my ($chip, %options) = @_;                                                    # Chip, options
 
   my %outerGates;
@@ -142,7 +128,7 @@ sub getGates($%)                                                                
     for my $G(sort keys %$innerGates)                                           # Each gate in sub chip
      {my $g = $$innerGates{$G};                                                 # Gate in sub chip
       my $o = $g->output;                                                       # Name of gate
-      my $copy = $chip->cloneGate($g);                                          # Clone gate from chip description
+      my $copy = cloneGate $chip, $g;                                           # Clone gate from chip description
       my $newGateName = sprintf "$n %d", $install+1;                            # Rename gates to prevent name collisions from the expansions of the definitions of the inner chips
 
       if ($copy->type =~ m(\Ainput\Z)i)                                         # Input gate on inner chip - connect to corresponding output gate on containing chip
@@ -155,7 +141,7 @@ sub getGates($%)                                                                
         my $on = $O->output;
            $ot =~ m(\Aoutput\Z)i or confess "Output gate required for connection to $in on sub chip $n, not gate $on of type $ot";
         $copy->inputs = {1 => $o};                                              # Connect inner input gate to outer output gate
-        $chip->renameGate($copy, $newGateName)
+        renameGate $chip, $copy, $newGateName;
        }
 
       elsif ($copy->type =~ m(\Aoutput\Z)i)                                     # Output gate on inner chip - connect to corresponding input gate on containing chip
@@ -167,13 +153,13 @@ sub getGates($%)                                                                
         my $it = $I->type;
         my $in = $I->output;
            $it =~ m(\Ainput\Z)i or confess "Input gate required for connection to '$in' on sub chip '$n', not gate '$in' of type '$it'";
-        $chip->renameGateInputs($copy, $newGateName);
-        $chip->renameGate      ($copy, $newGateName);
+        renameGateInputs $chip, $copy, $newGateName;
+        renameGate       $chip, $copy, $newGateName;
         $I->inputs = {11 => $copy->output};                                     # Connect inner output gate to outer input gate
        }
       else                                                                      # Rename all other gate inputs
-       {$chip->renameGateInputs($copy, $newGateName);
-        $chip->renameGate($copy, $newGateName)
+       {renameGateInputs $chip, $copy, $newGateName;
+        renameGate       $chip, $copy, $newGateName;
        }
 
       $outerGates{$copy->output} = $copy;                                       # Install gate with new name now it has been connected up
@@ -182,7 +168,7 @@ sub getGates($%)                                                                
   \%outerGates                                                                  # Return all the gates in the chip extended by its sub chips
  }
 
-sub checkIO($%)                                                                 # Check that every input is connected to one output
+my sub checkIO($%)                                                                 # Check that every input is connected to one output
  {my ($chip, $gates, %options) = @_;                                            # Chip, gates in chip plus all sub chips as supplied by L<getGates>.
 
   my %o;
@@ -208,7 +194,7 @@ sub checkIO($%)                                                                 
    }
  }
 
-sub simulationStep($$$%)                                                        # One step in the simulation of the chip after expansion of inner chips
+my sub simulationStep($$$%)                                                        # One step in the simulation of the chip after expansion of inner chips
  {my ($chip, $gates, $values, %options) = @_;                                   # Chip, gates, current value of each gate, options
   my %changes;                                                                  # Changes made
 
@@ -269,7 +255,7 @@ sub simulationStep($$$%)                                                        
   %changes
  }
 
-sub simulationResults($$%)                                                      # Simulation result
+my sub simulationResults($$%)                                                      # Simulation result
  {my ($chip, $values, %options) = @_;                                           # Chip, hash of final values for each gate, options
 
   genHash("Idc::Designer::Simulation::Results",                                 # Simulation results
@@ -280,18 +266,19 @@ sub simulationResults($$%)                                                      
 
 sub simulate($$%)                                                               # Simulate the set of gates until nothing changes.  This should be possible as feedback loops are banned.
  {my ($chip, $inputs, %options) = @_;                                           # Chip, Hash of input names to values, options
-  my $gates = $chip->getGates;                                                  # Gates implementing the chip and all of its sub chips
+  my $gates = getGates $chip;                                                   # Gates implementing the chip and all of its sub chips
 
-  $chip->dumpGates($gates) if $options{dumpGates};
-  $chip->checkIO($gates);                                                       # Check all inputs are connected to valid gates and that all outputs are used
+  $chip->dumpGates($gates, %options) if $options{dumpGates};                    # Print the gates
+  $chip->svgGates ($gates, %options) if $options{svg};                          # Draw the gates using svg
+  checkIO $chip, $gates;                                                        # Check all inputs are connected to valid gates and that all outputs are used
 
   my %values = %$inputs;                                                        # The current set of values contains just the inputs at the start of the simulation.
 
   my $T = maxSimulationSteps;                                                   # Maximum steps
   for my $t(0..$T)                                                              # Steps in time
-   {my %changes = $chip->simulationStep($gates, \%values);                      # Changes made
+   {my %changes = simulationStep $chip, $gates, \%values;                       # Changes made
 
-    return $chip->simulationResults(\%values, steps=>$t) unless keys %changes;  # Keep going until nothing changes
+    return simulationResults $chip, \%values, steps=>$t unless keys %changes;   # Keep going until nothing changes
 
     for my $c(keys %changes)                                                    # Update state of circuit
      {$values{$c} = $changes{$c};
@@ -299,6 +286,71 @@ sub simulate($$%)                                                               
    }
 
   confess "Out of time after $T steps";                                         # Not enough steps available
+ }
+
+#D1 Visualize                                                                   # Visualize the chip in various ways
+
+sub dumpGates($$%)                                                              # Dump some gates
+ {my ($chip, $gates, %options) = @_;                                            # Chip, gates, options
+  my @s;
+  for my $G(sort keys %$gates)                                                  # Dump each gate one per line
+   {my $g = $$gates{$G};
+    my %i = $g->inputs ? $g->inputs->%* : ();
+    my $p = sprintf "%-12s: %-8s", $g->output, $g->type;                        # Instruction name and type
+    if (my @i = map {$i{$_}} sort keys %i)                                      # Add inputs in same line
+     {$p .= join " ", @i;
+     }
+    push @s, $p;
+   }
+  say STDERR join "\n", @s;
+ }
+
+sub svgGates($$%)                                                               # Dump some gates
+ {my ($chip, $gates, %options) = @_;                                            # Chip, gates, options
+  my $scale = 100;
+
+  my @d; my %d; my $width = 0;                                                  # Dimensions and drawing order of gates
+  for my $G(sort keys %$gates)                                                  # Dump each gate one per line
+   {my $g   = $$gates{$G};
+    my %i   = $g->inputs ? $g->inputs->%* : ();
+    $width += (my $n = keys %i);                                                # Size of each gate
+    $d{$g->output} = scalar(@d);                                                # Ordered hash
+    push @d, [$g, $n, $width];
+   }
+
+  if (1)                                                                        # Draw each gate
+   {my $x = 0; my $X = $width*$scale; my $Y = $X;                               # Svg
+    my $s = SVG->new(width=>"100%", height=>"100%", viewBox=>sprintf "0 0 %d %d", $X, $Y);
+
+    for my $d(@d)                                                               # Each gate with text describing it
+     {my ($g, $w) = @$d;
+      my $xs = $x * $scale; my $ys = $xs; my $W = $w * $scale;
+      $s->line(x1=>0, x2=>$X, y1=>$ys+$W/2, y2=>$ys+$W/2,  stroke=>"black", "stroke-width"=>2);
+
+      $s->rect(x=>$xs, y=>$ys, width=>$W, height=>$W, fill=>"white",    "stroke-width"=>1, stroke=>"green");
+      $s->text(x=>$xs+$W/2, y=>$ys+$W * 2 / 5,        fill=>"red",      "text-anchor"=>"middle", "alignment-baseline"=>"middle")->cdata($g->type);
+      $s->text(x=>$xs+$W/2, y=>$ys+$W * 4 / 5,        fill=>"darkblue", "text-anchor"=>"middle", "alignment-baseline"=>"middle")->cdata($g->output);
+
+      if ($g->type !~ m(\Ainput\Z)i or ($g->inputs->{$g->output}//'') ne $g->output)   # Not an input pin
+       {my %i = $g->inputs ? $g->inputs->%* : ();
+        my @i = sort values %i;                                                 # Connections to each gate
+        for my $i(keys @i)                                                      # Connections to each gate
+         {my $y = $d[$d{$i[$i]}][2] * $scale;                                   # Target gate y position
+          my $x = $xs + ($i+1) * $W/(@i+1);                                     # Target gate x position
+          my $Y = $ys; $Y += $W if $Y < $ys;
+          if ($Y < $y)
+           {$s->line(x1=>$x, y1=>$y-$W/2, x2=>$x, y2=>$Y+$W, stroke=>"purple", "stroke-width"=>2);
+           }
+          else
+           {$s->line(x1=>$x, y1=>$y-$W/2, x2=>$x, y2=>$Y, stroke=>"red", "stroke-width"=>2);
+           }
+         }
+       }
+
+      $x += $w;
+     }
+    owf(fpe($options{svg}, q(svg)), $s->xmlify);
+   }
  }
 
 #D0 Tests                                                                       # Tests and examples
@@ -453,8 +505,8 @@ if (1)                                                                          
   my $n = $i->gate("not",   "n",  "i");
           $i->gate("output","io", "n");
 
-  my $ci = $i->cloneGate($n);
-  $i->renameGate($ci, "aaa");
+  my $ci = cloneGate $i, $n;
+  renameGate $i, $ci, "aaa";
   is_deeply($ci, { inputs => { n => "i" }, output => "(aaa n)", type => "not" });
  }
 
@@ -478,7 +530,7 @@ if (1)                                                                          
   $o->install($i, {Ii=>"Oo1"}, {Io=>"Oi2"});
   $o->install($i, {Ii=>"Oo2"}, {Io=>"Oi3"});
   $o->install($i, {Ii=>"Oo3"}, {Io=>"Oi4"});
-  my $s = $o->simulate({Oi1=>1});
+  my $s = $o->simulate({Oi1=>1}, svg=>"svg/not3");
   is_deeply($s->values->{Oo}, 0);
  }
 
