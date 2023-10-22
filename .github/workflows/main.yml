@@ -1,4 +1,4 @@
-# Test 2023-10-22 at 06:25:36
+# Test 2023-10-22 at 06:28:14
 
 name: Test
 
@@ -44,7 +44,7 @@ jobs:
 
     - name: Test Perl implementation of B Tree
       run:
-        perl Zesal.pm
+        perl -Idtt/lib Zesal.pm
 
     - name: Test Perl implemented integrated circuits
       run:
