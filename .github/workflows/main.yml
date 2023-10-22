@@ -1,4 +1,4 @@
-# Test 2023-10-22 at 06:16:59
+# Test 2023-10-22 at 06:18:56
 
 name: Test
 
@@ -20,6 +20,11 @@ jobs:
         repository: philiprbrenan/DataTableText
         path: dtt
 
+    - uses: actions/checkout@v3
+      with:
+        repository: philiprbrenan/SvgSimple
+        path: svg
+
     - name: Cpan
       run:  sudo cpan install -T Data::Dump Data::Table::Text
     - name: Ubuntu update
@@ -34,7 +39,7 @@ jobs:
 
     - name: Test Perl implemented integrated circuits
       run:
-        perl Chip.pm
+        perl -Idtt -Isvg  Chip.pm
 
     - name: Test Verilog
       run:
