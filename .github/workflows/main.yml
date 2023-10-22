@@ -1,4 +1,4 @@
-# Test 2023-10-22 at 06:18:56
+# Test 2023-10-22 at 06:21:23
 
 name: Test
 
@@ -25,10 +25,16 @@ jobs:
         repository: philiprbrenan/SvgSimple
         path: svg
 
+    - name: Tree
+      run:
+        sudo apt install tree
+        tree
+
     - name: Cpan
-      run:  sudo cpan install -T Data::Dump Data::Table::Text
+      run:  sudo cpan install -T Data::Dump
     - name: Ubuntu update
       run:  sudo apt update
+
 
     - name: Verilog installation
       run:  sudo apt -y install iverilog
