@@ -1,4 +1,4 @@
-#!/usr/bin/perl -I/home/phil/perl/cpan/DataTableText/lib/
+#!/usr/bin/perl -I/home/phil/perl/cpan/SvgSimple/lib/
 #-------------------------------------------------------------------------------
 # Design a chip by combining gates and sub chips.
 # Philip R Brenan at appaapps dot com, Appa Apps Ltd Inc., 2023
@@ -10,7 +10,7 @@ use strict;
 use Carp;
 use Data::Dump qw(dump);
 use Data::Table::Text qw(:all);
-use SVG;
+use Svg::Simple;
 
 makeDieConfess;
 
@@ -305,7 +305,7 @@ sub dumpGates($$%)                                                              
   say STDERR join "\n", @s;
  }
 
-sub svgGates($$%)                                                               # Dump some gates
+sub svgGates2($$%)                                                              # Dump some gates
  {my ($chip, $gates, %options) = @_;                                            # Chip, gates, options
   my $scale = 100;
 
@@ -328,8 +328,8 @@ sub svgGates($$%)                                                               
       $s->line(x1=>0, x2=>$X, y1=>$ys+$W/2, y2=>$ys+$W/2,  stroke=>"black", "stroke-width"=>2);
 
       $s->rect(x=>$xs, y=>$ys, width=>$W, height=>$W, fill=>"white",    "stroke-width"=>1, stroke=>"green");
-      $s->text(x=>$xs+$W/2, y=>$ys+$W * 2 / 5,        fill=>"red",      "text-anchor"=>"middle", "alignment-baseline"=>"middle")->cdata($g->type);
-      $s->text(x=>$xs+$W/2, y=>$ys+$W * 4 / 5,        fill=>"darkblue", "text-anchor"=>"middle", "alignment-baseline"=>"middle")->cdata($g->output);
+      $s->text(x=>$xs+$W/2, y=>$ys+$W * 2 / 5,        fill=>"red",      "text-anchor"=>"middle", "alignment-baseline"=>"middle", "font-size"=>"0.3")->cdata($g->type);
+      $s->text(x=>$xs+$W/2, y=>$ys+$W * 4 / 5,        fill=>"darkblue", "text-anchor"=>"middle", "alignment-baseline"=>"middle", "font-size"=>"0.3")->cdata($g->output);
 
       if ($g->type !~ m(\Ainput\Z)i or ($g->inputs->{$g->output}//'') ne $g->output)   # Not an input pin
        {my %i = $g->inputs ? $g->inputs->%* : ();
@@ -350,6 +350,53 @@ sub svgGates($$%)                                                               
       $x += $w;
      }
     owf(fpe($options{svg}, q(svg)), $s->xmlify);
+   }
+ }
+
+sub svgGates($$%)                                                               # Dump some gates
+ {my ($chip, $gates, %options) = @_;                                            # Chip, gates, options
+
+  my @d; my %d; my $width = 0;                                                  # Dimensions and drawing order of gates
+  for my $G(sort keys %$gates)                                                  # Dump each gate one per line
+   {my $g   = $$gates{$G};
+    my %i   = $g->inputs ? $g->inputs->%* : ();
+    $width += (my $n = keys %i);                                                # Size of each gate is the number of its inputs
+    $d{$g->output} = scalar(@d);                                                # Ordered hash
+    push @d, [$g, $n, $width];
+   }
+
+  if (1)                                                                        # Draw each gate
+   {my $x = 0; my $X = $width; my $Y = $X;                                      # Svg
+    my $s = Svg::Simple::new(defaults=>{stroke_width=>0.02, font_size=>0.4});
+
+    for my $d(@d)                                                               # Each gate with text describing it
+     {my ($g, $w) = @$d;
+      my $xs = $x; my $ys = $xs; my $W = $w;
+      $s->line(x1=>0, x2=>$X, y1=>$ys+$W/2, y2=>$ys+$W/2,  stroke=>"black");
+
+      $s->rect(x=>$xs, y=>$ys, width=>$W, height=>$W, fill=>"white",    stroke=>"green");
+      $s->text(x=>$xs+$W/2, y=>$ys+$W * 2 / 5,        fill=>"red",      text_anchor=>"middle", alignment_baseline=>"middle", cdata=>$g->type);
+      $s->text(x=>$xs+$W/2, y=>$ys+$W * 4 / 5,        fill=>"darkblue", text_anchor=>"middle", alignment_baseline=>"middle", cdata=>$g->output);
+
+      if ($g->type !~ m(\Ainput\Z)i or ($g->inputs->{$g->output}//'') ne $g->output)   # Not an input pin
+       {my %i = $g->inputs ? $g->inputs->%* : ();
+        my @i = sort values %i;                                                 # Connections to each gate
+        for my $i(keys @i)                                                      # Connections to each gate
+         {my $y = $d[$d{$i[$i]}][2];                                            # Target gate y position
+          my $x = $xs + ($i+1) * $W/(@i+1);                                     # Target gate x position
+          my $Y = $ys; $Y += $W if $Y < $ys;
+          if ($Y < $y)
+           {$s->line(x1=>$x, y1=>$y-$W/2, x2=>$x, y2=>$Y+$W, stroke=>"purple");
+           }
+          else
+           {$s->line(x1=>$x, y1=>$y-$W/2, x2=>$x, y2=>$Y, stroke=>"red");
+           }
+         }
+       }
+
+      $x += $w;
+     }
+    owf(fpe($options{svg}, q(svg)), $s->print);
    }
  }
 
@@ -448,7 +495,7 @@ if (1)                                                                          
   $c->gate("and",    "and", {map{$_=>"e$_"} 1..$B});                            # And tests together to get equality
   $c->gate("output", "out", "and");
   is_deeply($c->simulate({a1=>1, a2=>0, a3=>1, a4=>0,
-                          b1=>1, b2=>0, b3=>1, b4=>0})->values->{out}, 1);
+                          b1=>1, b2=>0, b3=>1, b4=>0}, svg=>"svg/Compare4")->values->{out}, 1);
   is_deeply($c->simulate({a1=>1, a2=>1, a3=>1, a4=>0,
                           b1=>1, b2=>0, b3=>1, b4=>0})->values->{out}, 0);
  }
