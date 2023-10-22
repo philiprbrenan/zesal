@@ -1,4 +1,4 @@
-# Test 2023-10-22 at 06:23:55
+# Test 2023-10-22 at 06:25:36
 
 name: Test
 
@@ -48,7 +48,7 @@ jobs:
 
     - name: Test Perl implemented integrated circuits
       run:
-        perl -Idtt -Isvg  Chip.pm
+        perl -Idtt/lib -Isvg/lib  Chip.pm
 
     - name: Test Verilog
       run:
