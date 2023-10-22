@@ -1,4 +1,4 @@
-# Test 2023-10-22 at 06:21:23
+# Test 2023-10-22 at 06:23:55
 
 name: Test
 
@@ -25,9 +25,12 @@ jobs:
         repository: philiprbrenan/SvgSimple
         path: svg
 
-    - name: Tree
+    - name: Install Tree
       run:
         sudo apt install tree
+
+    - name: Tree
+      run:
         tree
 
     - name: Cpan
