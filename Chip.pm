@@ -211,6 +211,7 @@ my sub removeInteriorIO($$%)                                                    
   for my $G(sort keys %$gates)                                                  # Find all inputs and outputs
    {my $g = $$gates{$G};                                                        # Address gate
     next if $g->io;                                                             # Skip input and output gates - instead we work back through the IO gates from the remaining gates
+lll "MMMM", dump($g->output, $g->type);
     my %i = $g->inputs->%*;                                                     # Inputs for gate
     for my $i(sort keys %i)                                                     # Each input
      {my $n = $i{$i};                                                           # Name of gate
@@ -218,15 +219,15 @@ my sub removeInteriorIO($$%)                                                    
        {if ($g->io == gateInternalInput)                                        # Corresponding gate is an internal input gate
          {my ($o) = values $g->inputs->%*;                                      # Obligatory output gate on outer chip driving input gate on inner chip
           my ($O) = values $$gates{$o}->inputs->%*;                             # Gate driving output gate which drives input gate connected to current gate
-lll "NNNN ", dump($n);
+lll "NNNN ", dump($n, $g->inputs, $o, $O);
           $g->inputs->{$i} = $O;                                                # Replace output-input-gate with direct connection to gate.
-          $r{$O}++; #$r{$n}++;
+          $r{$O}++; $r{$n}++;
          }
        }
      }
    }
-lll "GGGG", dump($gates);
 lll "RRRR", dump(\%r); exit;
+lll "GGGG", dump($gates); exit;
   for my $g(sort keys %r)                                                       # Remove bypassed gates
    {delete $$gates{$g};
    }
@@ -605,6 +606,29 @@ if (1)                                                                          
   is_deeply($ci->output,  "(aaa n)");
   is_deeply($ci->internal, 0);
  }
+
+latest:;
+=pod
+ Oi1 -> Oo1-> Ii->In->Io -> Oi2 -> Oo
+=cut
+
+if (1)                                                                          # Install one inside another chip, specifically obe chip that performs NOT is installed three times sequentially to flip a value
+ {my $i = newChip(name=>"inner");
+     $i->gate("input", "Ii");
+     $i->gate("not",   "In", "Ii");
+     $i->gate("output","Io", "In");
+
+  my $o = newChip(name=>"outer");
+     $o->gate("input",    "Oi1");
+     $o->gate("output",   "Oo1", "Oi1");
+     $o->gate("input",    "Oi2");
+     $o->gate("output",    "Oo", "Oi2");
+
+  $o->install($i, {Ii=>"Oo1"}, {Io=>"Oi2"});
+  my $s = $o->simulate({Oi1=>1}, dumpGates=>"dump/not1", svg=>"svg/not1");
+  is_deeply($s->values->{Oo}, 0);
+ }
+exit;
 
 latest:;
 if (1)                                                                          # Install one inside another chip, specifically obe chip that performs NOT is installed three times sequentially to flip a value
