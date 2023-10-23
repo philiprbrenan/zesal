@@ -15,8 +15,11 @@ use Svg::Simple;
 makeDieConfess;
 
 sub maxSimulationSteps {100}                                                    # Maximum simulation steps
+sub gateNotIO          {0}                                                      # Not an input or output gate
 sub gateInternalInput  {1}                                                      # Input gate on an internal chip
 sub gateInternalOutput {2}                                                      # Output gate on an internal chip
+sub gateExternalInput  {3}                                                      # Input gate on the external chip
+sub gateExternalOutput {4}                                                      # Output gate on the external chip
 
 sub newChip(%)                                                                  # Create a new chip
  {my (%options) = @_;                                                           # Options
@@ -34,7 +37,7 @@ sub newGate($$$$)                                                               
    type     => $type,                                                           # Gate type
    output   => $output,                                                         # Output name which is used as the name of the gate as well
    inputs   => $inputs,                                                         # Input names to driving outputs
-   internal => 0,                                                               # Make a gate as being part of an internal check of true
+   io       => gateNotIO,                                                       # Whether an input/output gate or not
   );
  }
 
@@ -118,7 +121,9 @@ my sub getGates($%)                                                             
 
   my %outerGates;
   for my $g(values $chip->gates->%*)                                            # Copy gates from outer chip
-   {$outerGates{$g->output} = cloneGate($chip, $g);
+   {my $G = $outerGates{$g->output} = cloneGate($chip, $g);
+    if    ($G->type =~ m(\Ainput\Z)i)  {$G->io = gateExternalInput}             # Input gate on outer chip
+    elsif ($G->type =~ m(\Aoutput\Z)i) {$G->io = gateExternalOutput}            # Output gate on outer chip
    }
 
   my @installs = $chip->installs->@*;                                           # Each sub chip used in this chip
@@ -145,7 +150,7 @@ my sub getGates($%)                                                             
            $ot =~ m(\Aoutput\Z)i or confess "Output gate required for connection to $in on sub chip $n, not gate $on of type $ot";
         $copy->inputs = {1 => $o};                                              # Connect inner input gate to outer output gate
         renameGate $chip, $copy, $newGateName;                                  # Add chip name to gate to disambiguate it from any other gates
-        $copy->internal = gateInternalInput;                                    # Mark this as an internal input gate
+        $copy->io = gateInternalInput;                                          # Mark this as an internal input gate
        }
 
       elsif ($copy->type =~ m(\Aoutput\Z)i)                                     # Output gate on inner chip - connect to corresponding input gate on containing chip
@@ -160,7 +165,7 @@ my sub getGates($%)                                                             
         renameGateInputs $chip, $copy, $newGateName;
         renameGate       $chip, $copy, $newGateName;
         $I->inputs = {11 => $copy->output};                                     # Connect inner output gate to outer input gate
-        $copy->internal = gateInternalOutput;                                   # Mark this as an internal output gate
+        $copy->io  = gateInternalOutput;                                        # Mark this as an internal output gate
        }
       else                                                                      # Rename all other gate inputs
        {renameGateInputs $chip, $copy, $newGateName;
@@ -173,13 +178,13 @@ my sub getGates($%)                                                             
   \%outerGates                                                                  # Return all the gates in the chip extended by its sub chips
  }
 
-my sub checkIO($%)                                                              # Check that every input is connected to one output
+my sub checkIO($$%)                                                             # Check that every input is connected to one output
  {my ($chip, $gates, %options) = @_;                                            # Chip, gates in chip plus all sub chips as supplied by L<getGates>.
 
   my %o;
   for my $G(sort keys %$gates)                                                  # Find all inputs and outputs
    {my $g = $$gates{$G};                                                        # Address gate
-    next unless $g->inputs;                                                     # Inputs are driven externally during simulation
+    ##next unless $g->inputs;                                                     # Inputs are driven externally during simulation
     my %i = $g->inputs->%*;                                                     # Inputs for gate
     for my $i(sort keys %i)                                                     # Each input
      {my $o = $i{$i};                                                           # Output driving input
@@ -199,7 +204,34 @@ my sub checkIO($%)                                                              
    }
  }
 
-my sub simulationStep($$$%)                                                        # One step in the simulation of the chip after expansion of inner chips
+my sub removeInteriorIO($$%)                                                    # Remove interior IO gates by making direct connections instead
+ {my ($chip, $gates, %options) = @_;                                            # Chip, gates in chip plus all sub chips as supplied by L<getGates>.
+
+  my %r;                                                                        # Gates that can be removed
+  for my $G(sort keys %$gates)                                                  # Find all inputs and outputs
+   {my $g = $$gates{$G};                                                        # Address gate
+    next if $g->io;                                                             # Skip input and output gates - instead we work back through the IO gates from the remaining gates
+    my %i = $g->inputs->%*;                                                     # Inputs for gate
+    for my $i(sort keys %i)                                                     # Each input
+     {my $n = $i{$i};                                                           # Name of gate
+      if (my $g = $$gates{$n})                                                  # Corresponding gate
+       {if ($g->io == gateInternalInput)                                        # Corresponding gate is an internal input gate
+         {my ($o) = values $g->inputs->%*;                                      # Obligatory output gate on outer chip driving input gate on inner chip
+          my ($O) = values $$gates{$o}->inputs->%*;                             # Gate driving output gate which drives input gate connected to current gate
+          $g->inputs->{$i} = $O;                                                # Replace output-input-gate with direct connection to gate.
+          $r{$O}++; #$r{$n}++;
+         }
+       }
+     }
+   }
+lll "GGGG", dump($gates);
+lll "RRRR", dump(\%r); exit;
+  for my $g(sort keys %r)                                                       # Remove bypassed gates
+   {delete $$gates{$g};
+   }
+ }
+
+my sub simulationStep($$$%)                                                     # One step in the simulation of the chip after expansion of inner chips
  {my ($chip, $gates, $values, %options) = @_;                                   # Chip, gates, current value of each gate, options
   my %changes;                                                                  # Changes made
 
@@ -272,6 +304,8 @@ my sub simulationResults($$%)                                                   
 sub simulate($$%)                                                               # Simulate the set of gates until nothing changes.  This should be possible as feedback loops are banned.
  {my ($chip, $inputs, %options) = @_;                                           # Chip, Hash of input names to values, options
   my $gates = getGates $chip;                                                   # Gates implementing the chip and all of its sub chips
+# removeInteriorIO($chip, $gates);                                              # By pass and then remove all interior IO gates as they are no longer needed
+
 
   $chip->dumpGates($gates, %options) if $options{dumpGates};                    # Print the gates
   $chip->svgGates ($gates, %options) if $options{svg};                          # Draw the gates using svg
@@ -380,7 +414,7 @@ sub svgGates($$%)                                                               
       $s->line(x1=>0, x2=>$X, y1=>$ys+$W/2, y2=>$ys+$W/2, stroke=>"black");
 
       my $color = sub
-       {return "green" if $g->internal or $g->type !~ m(\A(input|output)\Z)i;
+       {return "green" unless $g->io;
         return "blue"  if $g->type =~ m(\Ainput\Z)i;
         "orange";
        }->();
@@ -571,7 +605,7 @@ if (1)                                                                          
   is_deeply($ci->internal, 0);
  }
 
-#latest:;
+latest:;
 if (1)                                                                          # Install one inside another chip, specifically obe chip that performs NOT is installed three times sequentially to flip a value
  {my $i = newChip(name=>"inner");
      $i->gate("input", "Ii");
@@ -591,7 +625,7 @@ if (1)                                                                          
   $o->install($i, {Ii=>"Oo1"}, {Io=>"Oi2"});
   $o->install($i, {Ii=>"Oo2"}, {Io=>"Oi3"});
   $o->install($i, {Ii=>"Oo3"}, {Io=>"Oi4"});
-  my $s = $o->simulate({Oi1=>1}, svg=>"svg/not3");
+  my $s = $o->simulate({Oi1=>1}, dumpGates=>"dump/not3", svg=>"svg/not3");
   is_deeply($s->values->{Oo}, 0);
  }
 
