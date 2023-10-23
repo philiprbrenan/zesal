@@ -218,6 +218,7 @@ my sub removeInteriorIO($$%)                                                    
        {if ($g->io == gateInternalInput)                                        # Corresponding gate is an internal input gate
          {my ($o) = values $g->inputs->%*;                                      # Obligatory output gate on outer chip driving input gate on inner chip
           my ($O) = values $$gates{$o}->inputs->%*;                             # Gate driving output gate which drives input gate connected to current gate
+lll "NNNN ", dump($n);
           $g->inputs->{$i} = $O;                                                # Replace output-input-gate with direct connection to gate.
           $r{$O}++; #$r{$n}++;
          }
@@ -304,7 +305,7 @@ my sub simulationResults($$%)                                                   
 sub simulate($$%)                                                               # Simulate the set of gates until nothing changes.  This should be possible as feedback loops are banned.
  {my ($chip, $inputs, %options) = @_;                                           # Chip, Hash of input names to values, options
   my $gates = getGates $chip;                                                   # Gates implementing the chip and all of its sub chips
-# removeInteriorIO($chip, $gates);                                              # By pass and then remove all interior IO gates as they are no longer needed
+  removeInteriorIO($chip, $gates);                                              # By pass and then remove all interior IO gates as they are no longer needed
 
 
   $chip->dumpGates($gates, %options) if $options{dumpGates};                    # Print the gates
@@ -335,7 +336,7 @@ sub dumpGates($$%)                                                              
   for my $G(sort keys %$gates)                                                  # Dump each gate one per line
    {my $g = $$gates{$G};
     my %i = $g->inputs ? $g->inputs->%* : ();
-    my $p = sprintf "%-12s: %-8s", $g->output, $g->type;                        # Instruction name and type
+    my $p = sprintf "%-12s: %2d %-8s", $g->output, $g->io, $g->type;            # Instruction name and type
     if (my @i = map {$i{$_}} sort keys %i)                                      # Add inputs in same line
      {$p .= join " ", @i;
      }
