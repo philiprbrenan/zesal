@@ -15,6 +15,8 @@ use Svg::Simple;
 makeDieConfess;
 
 sub maxSimulationSteps {100}                                                    # Maximum simulation steps
+sub gateInternalInput  {1}                                                      # Input gate on an internal chip
+sub gateInternalOutput {2}                                                      # Output gate on an internal chip
 
 sub newChip(%)                                                                  # Create a new chip
  {my (%options) = @_;                                                           # Options
@@ -29,18 +31,19 @@ sub newGate($$$$)                                                               
  {my ($chip, $type, $output, $inputs) = @_;                                     # Chip, gate type, output name, input names to output from another gate
 
   my $g = genHash("Icd::Designer::Gate",                                        # Gate
-   type   => $type,                                                             # Gate type
-   output => $output,                                                           # Output name which is used as the name of the gate as well
-   inputs => $inputs,                                                           # Input names to driving outputs
+   type     => $type,                                                           # Gate type
+   output   => $output,                                                         # Output name which is used as the name of the gate as well
+   inputs   => $inputs,                                                         # Input names to driving outputs
+   internal => 0,                                                               # Make a gate as being part of an internal check of true
   );
  }
 
-my sub cloneGate($$)                                                               # Clone a gate
+my sub cloneGate($$)                                                            # Clone a gate
  {my ($chip, $gate) = @_;                                                       # Chip, gate
   newGate($chip, $gate->type, $gate->output, $gate->inputs)
  }
 
-my sub renameGateInputs($$$)                                                       # Rename the inputs of a gate
+my sub renameGateInputs($$$)                                                    # Rename the inputs of a gate
  {my ($chip, $gate, $name) = @_;                                                # Chip, gate, prefix name
   for my $p(qw(inputs))
    {my %i;
@@ -110,7 +113,7 @@ sub gate($$$;$)                                                                 
   $chip->gates->{$output} = newGate($chip, $type, $output, $inputs);            # Construct gate, save it and return it
  }
 
-my sub getGates($%)                                                                # Get the gates of a chip and all it installed sub chips
+my sub getGates($%)                                                             # Get the gates of a chip and all it installed sub chips
  {my ($chip, %options) = @_;                                                    # Chip, options
 
   my %outerGates;
@@ -141,7 +144,8 @@ my sub getGates($%)                                                             
         my $on = $O->output;
            $ot =~ m(\Aoutput\Z)i or confess "Output gate required for connection to $in on sub chip $n, not gate $on of type $ot";
         $copy->inputs = {1 => $o};                                              # Connect inner input gate to outer output gate
-        renameGate $chip, $copy, $newGateName;
+        renameGate $chip, $copy, $newGateName;                                  # Add chip name to gate to disambiguate it from any other gates
+        $copy->internal = gateInternalInput;                                    # Mark this as an internal input gate
        }
 
       elsif ($copy->type =~ m(\Aoutput\Z)i)                                     # Output gate on inner chip - connect to corresponding input gate on containing chip
@@ -156,6 +160,7 @@ my sub getGates($%)                                                             
         renameGateInputs $chip, $copy, $newGateName;
         renameGate       $chip, $copy, $newGateName;
         $I->inputs = {11 => $copy->output};                                     # Connect inner output gate to outer input gate
+        $copy->internal = gateInternalOutput;                                   # Mark this as an internal output gate
        }
       else                                                                      # Rename all other gate inputs
        {renameGateInputs $chip, $copy, $newGateName;
@@ -168,7 +173,7 @@ my sub getGates($%)                                                             
   \%outerGates                                                                  # Return all the gates in the chip extended by its sub chips
  }
 
-my sub checkIO($%)                                                                 # Check that every input is connected to one output
+my sub checkIO($%)                                                              # Check that every input is connected to one output
  {my ($chip, $gates, %options) = @_;                                            # Chip, gates in chip plus all sub chips as supplied by L<getGates>.
 
   my %o;
@@ -367,14 +372,21 @@ sub svgGates($$%)                                                               
 
   if (1)                                                                        # Draw each gate
    {my $x = 0; my $X = $width; my $Y = $X;                                      # Svg
-    my $s = Svg::Simple::new(defaults=>{stroke_width=>0.02, font_size=>0.4});
+    my $s = Svg::Simple::new(defaults=>{stroke_width=>0.02, font_size=>0.2});
 
     for my $d(@d)                                                               # Each gate with text describing it
      {my ($g, $w) = @$d;
       my $xs = $x; my $ys = $xs; my $W = $w;
-      $s->line(x1=>0, x2=>$X, y1=>$ys+$W/2, y2=>$ys+$W/2,  stroke=>"black");
+      $s->line(x1=>0, x2=>$X, y1=>$ys+$W/2, y2=>$ys+$W/2, stroke=>"black");
 
-      $s->rect(x=>$xs, y=>$ys, width=>$W, height=>$W, fill=>"white",    stroke=>"green");
+      my $color = sub
+       {return "green" if $g->internal or $g->type !~ m(\A(input|output)\Z)i;
+        return "blue"  if $g->type =~ m(\Ainput\Z)i;
+        "orange";
+       }->();
+
+      $s->rect(x=>$xs, y=>$ys, width=>$W, height=>$W, fill=>"white", stroke=>$color);
+
       $s->text(x=>$xs+$W/2, y=>$ys+$W * 2 / 5,        fill=>"red",      text_anchor=>"middle", alignment_baseline=>"middle", cdata=>$g->type);
       $s->text(x=>$xs+$W/2, y=>$ys+$W * 4 / 5,        fill=>"darkblue", text_anchor=>"middle", alignment_baseline=>"middle", cdata=>$g->output);
 
@@ -554,7 +566,9 @@ if (1)                                                                          
 
   my $ci = cloneGate $i, $n;
   renameGate $i, $ci, "aaa";
-  is_deeply($ci, { inputs => { n => "i" }, output => "(aaa n)", type => "not" });
+  is_deeply($ci->inputs,   { n => "i" });
+  is_deeply($ci->output,  "(aaa n)");
+  is_deeply($ci->internal, 0);
  }
 
 #latest:;
