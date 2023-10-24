@@ -20,6 +20,8 @@ sub gateInternalInput  {1}                                                      
 sub gateInternalOutput {2}                                                      # Output gate on an internal chip
 sub gateExternalInput  {3}                                                      # Input gate on the external chip
 sub gateExternalOutput {4}                                                      # Output gate on the external chip
+sub gateOuterInput     {5}                                                      # Input gate on the external chip connecting to the outer world
+sub gateOuterOutput    {6}                                                      # Output gate on the external chip connecting to the outer world
 
 sub newChip(%)                                                                  # Create a new chip
  {my (%options) = @_;                                                           # Options
@@ -204,32 +206,51 @@ my sub checkIO($$%)                                                             
    }
  }
 
-my sub removeInteriorIO($$%)                                                    # Remove interior IO gates by making direct connections instead
+my sub setOuterGates($$%)                                                       # Set outer gates on extenal chip that connect to the outer world
  {my ($chip, $gates, %options) = @_;                                            # Chip, gates in chip plus all sub chips as supplied by L<getGates>.
 
-  my %r;                                                                        # Gates that can be removed
   for my $G(sort keys %$gates)                                                  # Find all inputs and outputs
    {my $g = $$gates{$G};                                                        # Address gate
-    next if $g->io;                                                             # Skip input and output gates - instead we work back through the IO gates from the remaining gates
-lll "MMMM", dump($g->output, $g->type);
-    my %i = $g->inputs->%*;                                                     # Inputs for gate
-    for my $i(sort keys %i)                                                     # Each input
-     {my $n = $i{$i};                                                           # Name of gate
-      if (my $g = $$gates{$n})                                                  # Corresponding gate
-       {if ($g->io == gateInternalInput)                                        # Corresponding gate is an internal input gate
-         {my ($o) = values $g->inputs->%*;                                      # Obligatory output gate on outer chip driving input gate on inner chip
-          my ($O) = values $$gates{$o}->inputs->%*;                             # Gate driving output gate which drives input gate connected to current gate
-lll "NNNN ", dump($n, $g->inputs, $o, $O);
-          $g->inputs->{$i} = $O;                                                # Replace output-input-gate with direct connection to gate.
-          $r{$O}++; $r{$n}++;
+    next unless $g->io == gateExternalInput;                                    # Input on external chip
+    my ($i) = values $g->inputs->%*;
+    $g->io = gateOuterInput if $g->output eq $i;                                # Unconnected input gates relfect back on themselves - this is a short hand way of discovering such gates
+   }
+
+  gate: for my $G(sort keys %$gates)                                            # Find all inputs and outputs
+   {my $g = $$gates{$G};                                                        # Address gate
+    next unless $g->io == gateExternalOutput;                                   # Output on external chip
+    for my $H(sort keys %$gates)                                                # Gates driven by this gate
+     {next if $G eq $H;
+      my %i = $$gates{$H}->inputs->%*;                                          # Inputs to this gate
+      for my $I(sort keys %i)                                                   # Each input
+       {next gate if $i{$I} eq $G;                                              # Found a gate that accepts input from this gate
+       }
+     }
+    $g->io = gateOuterOutput;                                                   # Does not drive any other gate
+   }
+ }
+
+my sub removeExcessIO($$%)                                                      # Remove unneeded IO gates
+ {my ($chip, $gates, %options) = @_;                                            # Chip, gates in chip plus all sub chips as supplied by L<getGates>.
+
+  gate: for my $G(sort keys %$gates)                                            # Find all inputs and outputs
+   {my $g = $$gates{$G};                                                        # Address gate
+    next unless $g->io;                                                         # Skip non IO gates
+    next if     $g->io == gateOuterInput or $g->io == gateOuterOutput;          # Cannot be collapsed
+    my ($n) = values $g->inputs->%*;                                            # Name of the gate driving this gate
+
+    for my $H(sort keys %$gates)                                                # Gates driven by this gate
+     {next if $G eq $H;
+      my $h = $$gates{$H};                                                      # Address gate
+      my %i = $h->inputs->%*;                                                   # Inputs
+      for my $i(sort keys %i)                                                   # Each input
+       {if ($i{$i} eq $G)                                                       # Found a gate that accepts input from this gate
+         {$h->inputs->{$i} = $n;                                                # Bypass io gate
+          delete $$gates{$G};
+          next gate;
          }
        }
      }
-   }
-lll "RRRR", dump(\%r); exit;
-lll "GGGG", dump($gates); exit;
-  for my $g(sort keys %r)                                                       # Remove bypassed gates
-   {delete $$gates{$g};
    }
  }
 
@@ -306,7 +327,9 @@ my sub simulationResults($$%)                                                   
 sub simulate($$%)                                                               # Simulate the set of gates until nothing changes.  This should be possible as feedback loops are banned.
  {my ($chip, $inputs, %options) = @_;                                           # Chip, Hash of input names to values, options
   my $gates = getGates $chip;                                                   # Gates implementing the chip and all of its sub chips
-  removeInteriorIO($chip, $gates);                                              # By pass and then remove all interior IO gates as they are no longer needed
+  setOuterGates($chip, $gates);                                                 # Set the outer gates which are to be connected to in the real word
+  #removeInteriorIO($chip, $gates);                                              # By pass and then remove all interior IO gates as they are no longer needed
+  removeExcessIO($chip, $gates);                                                # By pass and then remove all interior IO gates as they are no longer needed
 
 
   $chip->dumpGates($gates, %options) if $options{dumpGates};                    # Print the gates
@@ -331,14 +354,27 @@ sub simulate($$%)                                                               
 
 #D1 Visualize                                                                   # Visualize the chip in various ways
 
+sub orderGates($$%)                                                             # Order the gates so that input are first, output are last and the rest are in between
+ {my ($chip, $gates, %options) = @_;                                            # Chip, gates, options
+  my @i; my @r; my @o;
+  for my $G(sort keys %$gates)                                                  # Dump each gate one per line
+   {my $g = $$gates{$G};
+    push @i, $G if $g->type =~ m(\Ainput\Z)i;
+    push @o, $G if $g->type =~ m(\Aoutput\Z)i;
+    push @r, $G if $g->type !~ m(\A(in|out)put\Z)i;
+   }
+  @i = sort @i;  @o = sort @o; @r = sort @r;
+  (@i, @r, @o)
+ }
+
 sub dumpGates($$%)                                                              # Dump some gates
  {my ($chip, $gates, %options) = @_;                                            # Chip, gates, options
   my @s;
-  for my $G(sort keys %$gates)                                                  # Dump each gate one per line
+  for my $G(orderGates($chip, $gates))                                          # Dump each gate one per line
    {my $g = $$gates{$G};
     my %i = $g->inputs ? $g->inputs->%* : ();
     my $p = sprintf "%-12s: %2d %-8s", $g->output, $g->io, $g->type;            # Instruction name and type
-    if (my @i = map {$i{$_}} sort keys %i)                                      # Add inputs in same line
+    if (my @i = map {$i{$_}} sort keys %i)                                      # Add actual inputs in same line sorted in input pin name
      {$p .= join " ", @i;
      }
     push @s, $p;
@@ -346,59 +382,11 @@ sub dumpGates($$%)                                                              
   say STDERR join "\n", @s;
  }
 
-sub svgGates2($$%)                                                              # Dump some gates
- {my ($chip, $gates, %options) = @_;                                            # Chip, gates, options
-  my $scale = 100;
-
-  my @d; my %d; my $width = 0;                                                  # Dimensions and drawing order of gates
-  for my $G(sort keys %$gates)                                                  # Dump each gate one per line
-   {my $g   = $$gates{$G};
-    my %i   = $g->inputs ? $g->inputs->%* : ();
-    $width += (my $n = keys %i);                                                # Size of each gate
-    $d{$g->output} = scalar(@d);                                                # Ordered hash
-    push @d, [$g, $n, $width];
-   }
-
-  if (1)                                                                        # Draw each gate
-   {my $x = 0; my $X = $width*$scale; my $Y = $X;                               # Svg
-    my $s = SVG->new(width=>"100%", height=>"100%", viewBox=>sprintf "0 0 %d %d", $X, $Y);
-
-    for my $d(@d)                                                               # Each gate with text describing it
-     {my ($g, $w) = @$d;
-      my $xs = $x * $scale; my $ys = $xs; my $W = $w * $scale;
-      $s->line(x1=>0, x2=>$X, y1=>$ys+$W/2, y2=>$ys+$W/2,  stroke=>"black", "stroke-width"=>2);
-
-      $s->rect(x=>$xs, y=>$ys, width=>$W, height=>$W, fill=>"white",    "stroke-width"=>1, stroke=>"green");
-      $s->text(x=>$xs+$W/2, y=>$ys+$W * 2 / 5,        fill=>"red",      "text-anchor"=>"middle", "alignment-baseline"=>"middle", "font-size"=>"0.3")->cdata($g->type);
-      $s->text(x=>$xs+$W/2, y=>$ys+$W * 4 / 5,        fill=>"darkblue", "text-anchor"=>"middle", "alignment-baseline"=>"middle", "font-size"=>"0.3")->cdata($g->output);
-
-      if ($g->type !~ m(\Ainput\Z)i or ($g->inputs->{$g->output}//'') ne $g->output)   # Not an input pin
-       {my %i = $g->inputs ? $g->inputs->%* : ();
-        my @i = sort values %i;                                                 # Connections to each gate
-        for my $i(keys @i)                                                      # Connections to each gate
-         {my $y = $d[$d{$i[$i]}][2] * $scale;                                   # Target gate y position
-          my $x = $xs + ($i+1) * $W/(@i+1);                                     # Target gate x position
-          my $Y = $ys; $Y += $W if $Y < $ys;
-          if ($Y < $y)
-           {$s->line(x1=>$x, y1=>$y-$W/2, x2=>$x, y2=>$Y+$W, stroke=>"purple", "stroke-width"=>2);
-           }
-          else
-           {$s->line(x1=>$x, y1=>$y-$W/2, x2=>$x, y2=>$Y, stroke=>"red", "stroke-width"=>2);
-           }
-         }
-       }
-
-      $x += $w;
-     }
-    owf(fpe($options{svg}, q(svg)), $s->xmlify);
-   }
- }
-
 sub svgGates($$%)                                                               # Dump some gates
  {my ($chip, $gates, %options) = @_;                                            # Chip, gates, options
 
   my @d; my %d; my $width = 0;                                                  # Dimensions and drawing order of gates
-  for my $G(sort keys %$gates)                                                  # Dump each gate one per line
+  for my $G(orderGates($chip, $gates))                                          # Dump each gate one per line
    {my $g   = $$gates{$G};
     my %i   = $g->inputs ? $g->inputs->%* : ();
     $width += (my $n = keys %i);                                                # Size of each gate is the number of its inputs
@@ -416,9 +404,9 @@ sub svgGates($$%)                                                               
       $s->line(x1=>0, x2=>$X, y1=>$ys+$W/2, y2=>$ys+$W/2, stroke=>"black");
 
       my $color = sub
-       {return "green" unless $g->io;
-        return "blue"  if $g->type =~ m(\Ainput\Z)i;
-        "orange";
+       {return "red"   if $g->io == gateOuterOutput;
+        return "blue"  if $g->io == gateOuterInput;
+        "green"
        }->();
 
       $s->rect(x=>$xs, y=>$ys, width=>$W, height=>$W, fill=>"white", stroke=>$color);
@@ -626,9 +614,10 @@ if (1)                                                                          
 
   $o->install($i, {Ii=>"Oo1"}, {Io=>"Oi2"});
   my $s = $o->simulate({Oi1=>1}, dumpGates=>"dump/not1", svg=>"svg/not1");
-  is_deeply($s->values->{Oo}, 0);
+  say STDERR "SSSS";
+  say STDERR dump($s);
+  is_deeply($s, {steps  => 4, values => { "(inner 1 In)" => "", "(inner 1 Io)" => 0, "Oi1" => 1, "Oi2" => 0, "Oo" => 0 }});
  }
-exit;
 
 latest:;
 if (1)                                                                          # Install one inside another chip, specifically obe chip that performs NOT is installed three times sequentially to flip a value
