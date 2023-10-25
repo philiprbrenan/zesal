@@ -1,10 +1,10 @@
 #!/usr/bin/perl -I/home/phil/perl/cpan/SvgSimple/lib/
 #-------------------------------------------------------------------------------
-# Design a chip by combining gates and sub chips.
+# Design a silicon chip by combining gates and sub chips.
 # Philip R Brenan at appaapps dot com, Appa Apps Ltd Inc., 2023
 #-------------------------------------------------------------------------------
 use v5.34;
-package Chip;
+package Silicon::Chip;
 use warnings FATAL => qw(all);
 use strict;
 use Carp;
@@ -35,7 +35,7 @@ sub newChip(%)                                                                  
 sub newGate($$$$)                                                               # Make a gate
  {my ($chip, $type, $output, $inputs) = @_;                                     # Chip, gate type, output name, input names to output from another gate
 
-  my $g = genHash("Icd::Designer::Gate",                                        # Gate
+  my $g = genHash("Silicon::Chip::Gate",                                        # Gate
    type     => $type,                                                           # Gate type
    output   => $output,                                                         # Output name which is used as the name of the gate as well
    inputs   => $inputs,                                                         # Input names to driving outputs
@@ -324,37 +324,9 @@ my sub simulationResults($$%)                                                   
    );
  }
 
-sub simulate($$%)                                                               # Simulate the set of gates until nothing changes.  This should be possible as feedback loops are banned.
- {my ($chip, $inputs, %options) = @_;                                           # Chip, Hash of input names to values, options
-  my $gates = getGates $chip;                                                   # Gates implementing the chip and all of its sub chips
-  setOuterGates($chip, $gates);                                                 # Set the outer gates which are to be connected to in the real word
-  #removeInteriorIO($chip, $gates);                                              # By pass and then remove all interior IO gates as they are no longer needed
-  removeExcessIO($chip, $gates);                                                # By pass and then remove all interior IO gates as they are no longer needed
-
-
-  $chip->dumpGates($gates, %options) if $options{dumpGates};                    # Print the gates
-  $chip->svgGates ($gates, %options) if $options{svg};                          # Draw the gates using svg
-  checkIO $chip, $gates;                                                        # Check all inputs are connected to valid gates and that all outputs are used
-
-  my %values = %$inputs;                                                        # The current set of values contains just the inputs at the start of the simulation.
-
-  my $T = maxSimulationSteps;                                                   # Maximum steps
-  for my $t(0..$T)                                                              # Steps in time
-   {my %changes = simulationStep $chip, $gates, \%values;                       # Changes made
-
-    return simulationResults $chip, \%values, steps=>$t unless keys %changes;   # Keep going until nothing changes
-
-    for my $c(keys %changes)                                                    # Update state of circuit
-     {$values{$c} = $changes{$c};
-     }
-   }
-
-  confess "Out of time after $T steps";                                         # Not enough steps available
- }
-
 #D1 Visualize                                                                   # Visualize the chip in various ways
 
-sub orderGates($$%)                                                             # Order the gates so that input are first, output are last and the rest are in between
+my sub orderGates($$%)                                                          # Order the gates so that input are first, output are last and the rest are in between
  {my ($chip, $gates, %options) = @_;                                            # Chip, gates, options
   my @i; my @r; my @o;
   for my $G(sort keys %$gates)                                                  # Dump each gate one per line
@@ -367,7 +339,7 @@ sub orderGates($$%)                                                             
   (@i, @r, @o)
  }
 
-sub dumpGates($$%)                                                              # Dump some gates
+my sub dumpGates($$%)                                                           # Dump some gates
  {my ($chip, $gates, %options) = @_;                                            # Chip, gates, options
   my @s;
   for my $G(orderGates($chip, $gates))                                          # Dump each gate one per line
@@ -379,13 +351,13 @@ sub dumpGates($$%)                                                              
      }
     push @s, $p;
    }
-  say STDERR join "\n", @s;
+  owf fpe($options{dumpGates}, q(txt)), join "\n", @s;                          # Write representation of gates as text to the named file
  }
 
 my sub newGatePosition(%)                                                       # Gate position
  {my (%options) = @_;                                                           # Options
 
-  genHash("Icd::Designer::Gate::Position",                                      # Gate position
+  genHash("Silicon::Chip::Gate::Position",                                      # Gate position
     gate  => $options{gate}  // undef,                                          # Gate
     x     => $options{x}     // undef,                                          # X position of gate
     y     => $options{y}     // undef,                                          # Y position of gate
@@ -393,18 +365,21 @@ my sub newGatePosition(%)                                                       
    )
  }
 
-sub svgGates($$%)                                                               # Dump some gates
+my sub svgGates($$%)                                                            # Dump some gates
  {my ($chip, $gates, %options) = @_;                                            # Chip, gates, options
 
   my %p;                                                                        # Dimensions and drawing positions of gates
   if (1)                                                                        # Position each gate
-   {my $x = 0; my $y = 0;
+   {my $x = 0; my $y = 0; my $pg;
     for my $G(orderGates($chip, $gates))                                        # Each gate
      {my $g  = $$gates{$G};
       my %i  = $g->inputs ? $g->inputs->%* : ();
-      my $w  = keys %i;                                                         # Size of each gate is the number of its inputs
+      my $w  = keys %i;
+      $x++ if defined($pg) and $pg->io and !$g->io;                             # Move first non input gate right of the input gate stack
       $p{$G} = newGatePosition(gate=>$g, x=>$x, y=>$y, width=>$w);
-      $x += $w; $y++;
+      $x += $w unless $g->io;                                                   # IO gates can be stacked vertically because they are never connected vertically
+      $y += 1.2;
+      $pg = $g;                                                                 # Previous gate seen
      }
    }
 
@@ -440,18 +415,50 @@ sub svgGates($$%)                                                               
         my $dy = $Y < $y ?  0 : 1;
         my $dX = $X < $x ? $W : 0;
         my $dY = $Y < $y ?  0 : 0;
+        my $cx = $x+$dx;                                                        # Horizontal line corner x
+        my $cy = $Y+$dY+1/2;                                                    # Horizontal line corner y
+
         my $xc = $X < $x ? q(black) : q(darkBlue);                              # Horizontal line color
-        $s->line(x1=>$X+$dX,     x2=>$x+$dx,                                    # Horizontal lines
-                 y1=>$Y+$dY+1/2, y2=>$Y+$dY+1/2, stroke=>$xc);
+        $s->line(x1=>$X+$dX, x2=>$cx, y1=>$cy, y2=>$cy,    stroke=>$xc);        # Horizontal lines
 
         my $yc = $Y < $y ? q(purple) : q(darkRed);                              # Vertical lines
-        $s->line(x1=>$x+$dx,     x2=>$x+$dx,
-                 y1=>$Y+$dY+1/2, y2=>$y+$dy, stroke=>$yc);
+        $s->line(x1=>$cx,   x2=>$cx, y1=>$cy, y2=>$y+$dy, stroke=>$yc);
+        $s->circle(cx=>$cx, cy=>$cy, r=>0.04, fill=>"black");
        }
      }
     owf(fpe($options{svg}, q(svg)), $s->print);
    }
  }
+
+#D1 Simulate                                                                    # Simulate the behavior of the chip.
+
+sub simulate($$%)                                                               # Simulate the set of gates until nothing changes.  This should be possible as feedback loops are banned.
+ {my ($chip, $inputs, %options) = @_;                                           # Chip, Hash of input names to values, options
+  my $gates = getGates $chip;                                                   # Gates implementing the chip and all of its sub chips
+  setOuterGates($chip, $gates);                                                 # Set the outer gates which are to be connected to in the real word
+  removeExcessIO($chip, $gates);                                                # By pass and then remove all interior IO gates as they are no longer needed
+
+
+  dumpGates($chip, $gates, %options) if $options{dumpGates};                    # Print the gates
+  svgGates ($chip, $gates, %options) if $options{svg};                          # Draw the gates using svg
+  checkIO $chip, $gates;                                                        # Check all inputs are connected to valid gates and that all outputs are used
+
+  my %values = %$inputs;                                                        # The current set of values contains just the inputs at the start of the simulation.
+
+  my $T = maxSimulationSteps;                                                   # Maximum steps
+  for my $t(0..$T)                                                              # Steps in time
+   {my %changes = simulationStep $chip, $gates, \%values;                       # Changes made
+
+    return simulationResults $chip, \%values, steps=>$t unless keys %changes;   # Keep going until nothing changes
+
+    for my $c(keys %changes)                                                    # Update state of circuit
+     {$values{$c} = $changes{$c};
+     }
+   }
+
+  confess "Out of time after $T steps";                                         # Not enough steps available
+ }
+
 
 #D0 Tests                                                                       # Tests and examples
 
