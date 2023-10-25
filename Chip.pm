@@ -382,60 +382,72 @@ sub dumpGates($$%)                                                              
   say STDERR join "\n", @s;
  }
 
+my sub newGatePosition(%)                                                       # Gate position
+ {my (%options) = @_;                                                           # Options
+
+  genHash("Icd::Designer::Gate::Position",                                      # Gate position
+    gate  => $options{gate}  // undef,                                          # Gate
+    x     => $options{x}     // undef,                                          # X position of gate
+    y     => $options{y}     // undef,                                          # Y position of gate
+    width => $options{width} // undef,                                          # Width of gate
+   )
+ }
+
 sub svgGates($$%)                                                               # Dump some gates
  {my ($chip, $gates, %options) = @_;                                            # Chip, gates, options
 
-  my @d; my %d; my $width = 0;                                                  # Dimensions and drawing order of gates
-  for my $G(orderGates($chip, $gates))                                          # Dump each gate one per line
-   {my $g   = $$gates{$G};
-    my %i   = $g->inputs ? $g->inputs->%* : ();
-    $width += (my $n = keys %i);                                                # Size of each gate is the number of its inputs
-    $d{$g->output} = scalar(@d);                                                # Ordered hash
-    push @d, [$g, $n, $width];
+  my %p;                                                                        # Dimensions and drawing positions of gates
+  if (1)                                                                        # Position each gate
+   {my $x = 0; my $y = 0;
+    for my $G(orderGates($chip, $gates))                                        # Each gate
+     {my $g  = $$gates{$G};
+      my %i  = $g->inputs ? $g->inputs->%* : ();
+      my $w  = keys %i;                                                         # Size of each gate is the number of its inputs
+      $p{$G} = newGatePosition(gate=>$g, x=>$x, y=>$y, width=>$w);
+      $x += $w; $y++;
+     }
    }
 
-  if (1)                                                                        # Draw each gate
-   {my $x = 0; my $X = $width; my $Y = $X;                                      # Svg
-    my $s = Svg::Simple::new(defaults=>{stroke_width=>0.02, font_size=>0.2});
+  my $s = Svg::Simple::new(defaults=>{stroke_width=>0.02, font_size=>0.2});     # Draw each gate via Svg
 
-    for my $d(@d)                                                               # Each gate with text describing it
-     {my ($g, $w) = @$d;
-      my $xs = $x; my $ys = $xs; my $W = $w;
-      $s->line(x1=>0, x2=>$X, y1=>$ys+$W/2, y2=>$ys+$W/2, stroke=>"black");
+  for my $P(sort keys %p)                                                       # Each gate with text describing it
+   {my $p = $p{$P};
+    my $x = $p->x; my $y = $p->y; my $w = $p->width; my $g = $p->gate;          # Position of gate
 
-      my $color = sub
-       {return "red"   if $g->io == gateOuterOutput;
-        return "blue"  if $g->io == gateOuterInput;
-        "green"
-       }->();
+    my $color = sub
+     {return "red"  if $g->io == gateOuterOutput;
+      return "blue" if $g->io == gateOuterInput;
+      "green"
+     }->();
 
-      if ($g->io)
-       {$s->circle(cx=>$xs+1/2, cy=>$ys+1/2, r=>1/2, fill=>"white", stroke=>$color);
+    if ($g->io)                                                                 # Circle for io pin
+     {$s->circle(cx=>$x+1/2, cy=>$y+1/2, r=>1/2, fill=>"white", stroke=>$color);
+     }
+    else                                                                        # Rectangle for non io gate
+     {$s->rect(x=>$x, y=>$y, width=>$w, height=>1, fill=>"white", stroke=>$color);
+     }
+
+    $s->text(x=>$x+$w/2, y=>$y + 2/5, fill=>"red",      text_anchor=>"middle", alignment_baseline=>"middle", cdata=>$g->type);
+    $s->text(x=>$x+$w/2, y=>$y + 4/5, fill=>"darkblue", text_anchor=>"middle", alignment_baseline=>"middle", cdata=>$g->output);
+
+    if ($g->io != gateOuterInput)                                                                # Not an input pin
+     {my %i = $g->inputs ? $g->inputs->%* : ();
+      my @i = sort values %i;                                                   # Connections to each gate
+      for my $i(keys @i)                                                        # Connections to each gate
+       {my $P = $p{$i[$i]};                                                     # Source gate
+        my $X = $P->x; my $Y = $P->y; my $W = $P->width; my $G = $P->gate;      # Position of gate
+        my $dx = $i + 1/2;
+        my $dy = $Y < $y ?  0 : 1;
+        my $dX = $X < $x ? $W : 0;
+        my $dY = $Y < $y ?  0 : 0;
+        my $xc = $X < $x ? q(black) : q(darkBlue);                              # Horizontal line color
+        $s->line(x1=>$X+$dX,     x2=>$x+$dx,                                    # Horizontal lines
+                 y1=>$Y+$dY+1/2, y2=>$Y+$dY+1/2, stroke=>$xc);
+
+        my $yc = $Y < $y ? q(purple) : q(darkRed);                              # Vertical lines
+        $s->line(x1=>$x+$dx,     x2=>$x+$dx,
+                 y1=>$Y+$dY+1/2, y2=>$y+$dy, stroke=>$yc);
        }
-      else
-       { $s->rect(x=>$xs, y=>$ys, width=>$W, height=>$W, fill=>"white", stroke=>$color);
-       }
-
-      $s->text(x=>$xs+$W/2, y=>$ys+$W * 2 / 5,        fill=>"red",      text_anchor=>"middle", alignment_baseline=>"middle", cdata=>$g->type);
-      $s->text(x=>$xs+$W/2, y=>$ys+$W * 4 / 5,        fill=>"darkblue", text_anchor=>"middle", alignment_baseline=>"middle", cdata=>$g->output);
-
-      if ($g->type !~ m(\Ainput\Z)i or ($g->inputs->{$g->output}//'') ne $g->output)   # Not an input pin
-       {my %i = $g->inputs ? $g->inputs->%* : ();
-        my @i = sort values %i;                                                 # Connections to each gate
-        for my $i(keys @i)                                                      # Connections to each gate
-         {my $y = $d[$d{$i[$i]}][2];                                            # Target gate y position
-          my $x = $xs + ($i+1) * $W/(@i+1);                                     # Target gate x position
-          my $Y = $ys; $Y += $W if $Y < $ys;
-          if ($Y < $y)
-           {$s->line(x1=>$x, y1=>$y-$W/2, x2=>$x, y2=>$Y+$W, stroke=>"purple");
-           }
-          else
-           {$s->line(x1=>$x, y1=>$y-$W/2, x2=>$x, y2=>$Y, stroke=>"red");
-           }
-         }
-       }
-
-      $x += $w;
      }
     owf(fpe($options{svg}, q(svg)), $s->print);
    }
