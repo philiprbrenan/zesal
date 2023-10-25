@@ -597,10 +597,10 @@ if (1)                                                                          
   renameGate $i, $ci, "aaa";
   is_deeply($ci->inputs,   { n => "i" });
   is_deeply($ci->output,  "(aaa n)");
-  is_deeply($ci->internal, 0);
+  is_deeply($ci->io, 0);
  }
 
-latest:;
+#latest:;
 =pod
  Oi1 -> Oo1-> Ii->In->Io -> Oi2 -> Oo
 =cut
@@ -618,13 +618,11 @@ if (1)                                                                          
      $o->gate("output",    "Oo", "Oi2");
 
   $o->install($i, {Ii=>"Oo1"}, {Io=>"Oi2"});
-  my $s = $o->simulate({Oi1=>1}, dumpGates=>"dump/not1", svg=>"svg/not1");
-  say STDERR "SSSS";
-  say STDERR dump($s);
+  my $s = $o->simulate({Oi1=>1}, dumpGatesOff=>"dump/not1", svg=>"svg/not1");
   is_deeply($s, {steps  => 2, values => { "(inner 1 In)" => 0, "Oi1" => 1, "Oo" => 0 }});
  }
 
-latest:;
+#latest:;
 if (1)                                                                          # Install one inside another chip, specifically obe chip that performs NOT is installed three times sequentially to flip a value
  {my $i = newChip(name=>"inner");
      $i->gate("input", "Ii");
@@ -644,7 +642,7 @@ if (1)                                                                          
   $o->install($i, {Ii=>"Oo1"}, {Io=>"Oi2"});
   $o->install($i, {Ii=>"Oo2"}, {Io=>"Oi3"});
   $o->install($i, {Ii=>"Oo3"}, {Io=>"Oi4"});
-  my $s = $o->simulate({Oi1=>1}, dumpGates=>"dump/not3", svg=>"svg/not3");
+  my $s = $o->simulate({Oi1=>1}, dumpGatesOff=>"dump/not3", svg=>"svg/not3");
   is_deeply($s->values->{Oo}, 0);
  }
 
