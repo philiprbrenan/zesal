@@ -289,7 +289,7 @@ my sub simulationStep($$$%)                                                     
       elsif ($t =~ m(\A(continue|nor|not|or|output)\Z)i)                        # Elaborate NOT, OR or OUTPUT gate. A CONTINUE gate places its single input unchanged on its output
        {my $o = grep {$_} @i;                                                   # Count one inputs
         $r = $o ? 1 : 0;
-        $r = !$r if $t =~ m(\Anor|not\Z)i;
+        $r = $r ? 0 : 1 if $t =~ m(\Anor|not\Z)i;
        }
       elsif ($t =~ m(\A(nxor|xor)\Z)i)                                          # Elaborate XOR
        {@i == 2 or confess;
@@ -409,7 +409,12 @@ sub svgGates($$%)                                                               
         "green"
        }->();
 
-      $s->rect(x=>$xs, y=>$ys, width=>$W, height=>$W, fill=>"white", stroke=>$color);
+      if ($g->io)
+       {$s->circle(cx=>$xs+1/2, cy=>$ys+1/2, r=>1/2, fill=>"white", stroke=>$color);
+       }
+      else
+       { $s->rect(x=>$xs, y=>$ys, width=>$W, height=>$W, fill=>"white", stroke=>$color);
+       }
 
       $s->text(x=>$xs+$W/2, y=>$ys+$W * 2 / 5,        fill=>"red",      text_anchor=>"middle", alignment_baseline=>"middle", cdata=>$g->type);
       $s->text(x=>$xs+$W/2, y=>$ys+$W * 4 / 5,        fill=>"darkblue", text_anchor=>"middle", alignment_baseline=>"middle", cdata=>$g->output);
@@ -616,7 +621,7 @@ if (1)                                                                          
   my $s = $o->simulate({Oi1=>1}, dumpGates=>"dump/not1", svg=>"svg/not1");
   say STDERR "SSSS";
   say STDERR dump($s);
-  is_deeply($s, {steps  => 4, values => { "(inner 1 In)" => "", "(inner 1 Io)" => 0, "Oi1" => 1, "Oi2" => 0, "Oo" => 0 }});
+  is_deeply($s, {steps  => 2, values => { "(inner 1 In)" => 0, "Oi1" => 1, "Oo" => 0 }});
  }
 
 latest:;
