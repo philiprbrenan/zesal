@@ -1,0 +1,51 @@
+//-----------------------------------------------------------------------------
+// Test memory
+// Philip R Brenan at appaapps dot com, Appa Apps Ltd Inc., 2023
+//------------------------------------------------------------------------------
+module ZesalTB();                                                               // Zesal test bench
+  parameter integer KEYS_BITS     = 8;                                          // Number of bits in a key
+  parameter integer DATA_BITS     = 8;                                          // Number of bits in the data corresponding with a key
+  parameter integer NEXT_BITS     = 8;                                          // Number of bits in the pointer to the Zesal node
+  parameter integer INDEX_BITS    = 8;                                          // Number of bits used to index within this Zesal node giving the number of elements that can be stored in one zesal node
+  parameter integer  IN_BITS      = 8*64;                                       // Width of input data
+  parameter integer  IN_CMD_BITS  = 8;                                          // Width of input command in data
+  parameter integer OUT_BITS      = 8*64;                                       // Width of output data
+  parameter integer OUT_CMD_BITS  = 8;                                          // Width of input command in data
+
+  reg reset;                                                                    // Reset
+  reg clock;                                                                    // Clock
+  reg [ IN_BITS:0]in;                                                           // Input data
+  reg [OUT_BITS:0]out;                                                          // Output data
+
+  `include "tests.sv"                                                           // Test routines
+
+  Zesal #(                                                                      // Create a Zesal node
+    KEYS_BITS, DATA_BITS, NEXT_BITS, INDEX_BITS, IN_BITS, IN_CMD_BITS,
+    OUT_BITS, OUT_CMD_BITS) z
+   (.reset(reset),
+    .clock(clock),
+    .in(in),
+    .out(out)
+   );
+
+  task step();                                                                  // Drive clock.  The Yosys people say that you cannot drive on bioth positive and negative edges simultaneously but iverilog permits this. Using only one edge makes for a lot of clock steps.
+    begin
+       #1 clock = 0;
+       #1 clock = 1;
+       #1 clock = 0;
+    end
+  endtask
+
+  task dump();                                                                  // Dump the contents of memory
+    begin
+      // action = `Dump; step();
+    end
+  endtask
+
+  initial begin                                                                 // Test memory implementation
+    clock = 0;  reset = 1; step(); reset = 0;
+//$display("AAAA %d", error);
+//dump();
+    checkAllTestsPassed(0);
+  end
+endmodule
