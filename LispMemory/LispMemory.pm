@@ -223,7 +223,7 @@ module.  For an alphabetic listing of all methods by name see L<Index|/Index>.
 
 Construct lisp memory
 
-=head2 new (%options)
+=head2 newÂ (%options)
 
 Create a new lisp memory
 
@@ -236,7 +236,7 @@ B<Example:>
   #latest:;
 
 
-=head2 newLisp ($memory, %options)
+=head2 newLispÂ ($memory, %options)
 
 Create a new lisp memory pair. Pairs allow us to fanout quickly to create a structure of any size
 
@@ -250,7 +250,7 @@ B<Example:>
   if (1)
    {my $m = new;
 
-    my $l = $m->newLisp;  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
+    my $l = $m->newLisp;  # ððð®ðºð½ð¹ð²
 
     my $a = $m->wrap(1);
     my $b = $m->wrap(2);
@@ -283,10 +283,10 @@ B<Example:>
    {my $m = new;
     my $l = $m->newLisp;
 
-    my $a = $m->wrap(1);  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
+    my $a = $m->wrap(1);  # ððð®ðºð½ð¹ð²
 
 
-    my $b = $m->wrap(2);  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
+    my $b = $m->wrap(2);  # ððð®ðºð½ð¹ð²
 
     my $p = $m->join($a, $b);
             $m->put ($l, $p);
@@ -301,7 +301,7 @@ B<Example:>
    }
 
 
-=head2 put ($memory, $key, $value, %options)
+=head2 putÂ ($memory, $key, $value, %options)
 
 Map a key to a value
 
@@ -317,7 +317,7 @@ B<Example:>
   #latest:;
 
 
-=head2 get ($memory, $key, %options)
+=head2 getÂ ($memory, $key, %options)
 
 Get the value of a key in a lisp memory
 
@@ -332,7 +332,7 @@ B<Example:>
   #latest:;
 
 
-=head2 unwrap  ($memory, $value, %options)
+=head2 unwrapÂ Â ($memory, $value, %options)
 
 Unwrap a value returned from memory to retrieve its original value
 
@@ -356,10 +356,10 @@ B<Example:>
     is_deeply($A, $a);
     is_deeply($B, $b);
 
-    is_deeply($m->unwrap($A), 1);  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
+    is_deeply($m->unwrap($A), 1);  # ððð®ðºð½ð¹ð²
 
 
-    is_deeply($m->unwrap($B), 2);  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
+    is_deeply($m->unwrap($B), 2);  # ððð®ðºð½ð¹ð²
 
     ok $m->isLisp($l);
     ok $m->isUserOrLisp($l);
@@ -385,7 +385,7 @@ B<Example:>
     my $a = $m->wrap(1);
     my $b = $m->wrap(2);
 
-    my $p = $m->join($a, $b);  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
+    my $p = $m->join($a, $b);  # ððð®ðºð½ð¹ð²
 
             $m->put ($l, $p);
     my $P = $m->get ($l);
@@ -399,7 +399,7 @@ B<Example:>
    }
 
 
-=head2 split   ($memory, $value, %options)
+=head2 splitÂ Â Â ($memory, $value, %options)
 
 Split a lisp pair into two separate values
 
@@ -420,7 +420,7 @@ B<Example:>
             $m->put ($l, $p);
     my $P = $m->get ($l);
 
-    my ($A, $B) = $m->split($P);  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
+    my ($A, $B) = $m->split($P);  # ððð®ðºð½ð¹ð²
 
     is_deeply($A, $a);
     is_deeply($B, $b);
@@ -431,7 +431,7 @@ B<Example:>
    }
 
 
-=head2 getUser ($memory, $key, %options)
+=head2 getUserÂ ($memory, $key, %options)
 
 Get a value expected to be a user value and return it as such.
 
@@ -446,7 +446,7 @@ B<Example:>
   #latest:;
 
 
-=head2 isUser  ($memory, $key, %options)
+=head2 isUserÂ Â ($memory, $key, %options)
 
 Test whether a value is a user value
 
@@ -461,7 +461,7 @@ B<Example:>
   #latest:;
 
 
-=head2 isLisp  ($memory, $key, %options)
+=head2 isLispÂ Â ($memory, $key, %options)
 
 Test whether a value is a user value
 
@@ -487,13 +487,13 @@ B<Example:>
     is_deeply($m->unwrap($A), 1);
     is_deeply($m->unwrap($B), 2);
 
-    ok $m->isLisp($l);  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
+    ok $m->isLisp($l);  # ððð®ðºð½ð¹ð²
 
     ok $m->isUserOrLisp($l);
    }
 
 
-=head2 isPair  ($memory, $key, %options)
+=head2 isPairÂ Â ($memory, $key, %options)
 
 Test whether a value is a pair of values
 
@@ -529,7 +529,7 @@ B<Example:>
     is_deeply($m->unwrap($B), 2);
     ok $m->isLisp($l);
 
-    ok $m->isUserOrLisp($l);  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
+    ok $m->isUserOrLisp($l);  # ððð®ðºð½ð¹ð²
 
    }
 
@@ -548,7 +548,7 @@ B<Example:>
   #latest:;
 
 
-=head2 isNull  ($memory, $value, %options)
+=head2 isNullÂ Â ($memory, $value, %options)
 
 Test whether a value is a lisp null value
 
@@ -571,7 +571,7 @@ Standard data structures constructed in lisp memory
 
 Strings constructed from string memory
 
-=head3 newString   ($memory, $string, %options)
+=head3 newStringÂ Â Â ($memory, $string, %options)
 
 Create a string using lisp memory
 
@@ -586,7 +586,7 @@ B<Example:>
   if (1)
    {my $m = new;
 
-    my $s = $m->newString("Hello World");  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
+    my $s = $m->newString("Hello World");  # ððð®ðºð½ð¹ð²
 
     is_deeply($s, "l00000001");
     is_deeply($m, {lisps => 11, map => {
@@ -607,7 +607,7 @@ B<Example:>
    }
 
 
-=head3 getString   ($memory, $string, %options)
+=head3 getStringÂ Â Â ($memory, $string, %options)
 
 Return the characters in a string
 
@@ -635,7 +635,7 @@ B<Example:>
   if (1)
    {my $m = new;
 
-    my $s = $m->newArray(3);  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
+    my $s = $m->newArray(3);  # ððð®ðºð½ð¹ð²
 
     is_deeply($s, "l00000006");
     is_deeply($m, {lisps => 6, map => {
